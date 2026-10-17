@@ -1,0 +1,9 @@
+{
+  "id": "paseo-inbox",
+  "name": "Inbox",
+  "description": "Messages between your Paseo agents and their questions to you, in one shared inbox across hosts.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.11.2"
+  }
+}
