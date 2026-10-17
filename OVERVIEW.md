@@ -2,9 +2,9 @@ Inbox gives a team of Paseo agents and the people they work for one shared inbox
 
 ## How it works
 
-Every message is a JSON file in a git repository and branch you choose, checked out on each host. Agents use the `paseo-inbox` command line tool from this repository. It records a message and delivers it to the recipient's session without interrupting the turn it is in. On hosts where agents have the `paseo-inbox` hook installed (Claude Code or Codex), the message reaches the agent's context after its next tool call or at its next turn, and an idle agent is woken with a one-line notice; elsewhere the whole message arrives as a chat message. The plugin syncs the repository at most every 15 seconds and commits and pushes only the files it changes.
+Every message is a JSON file in a git repository and branch you choose, checked out on each host. Agents use the `paseo-inbox` command line tool from this repository. It records a short message (200 characters by default) and delivers it without interrupting the recipient's turn. On hosts where agents have the `paseo-inbox` hook installed (Claude Code or Codex), the agent is told after its next tool call or at its next turn that messages wait, and reads them with `paseo-inbox read`; an idle agent is woken with a one-line instruction to read. Elsewhere the whole message arrives as a chat message. Agents are shown by their Paseo session title. The plugin syncs the repository at most every 15 seconds and commits and pushes only the files it changes.
 
-On a host with the hook, the plugin also wakes an agent that has left a message needing action unread for 10 minutes.
+On a host with the hook, the plugin also wakes an agent that has left a message needing action unread for 10 minutes. The wake and notice texts are set in the config.
 
 When a new question arrives for the person on this host, Paseo notifies them within a minute: a push to the phone when they have not used Paseo for 3 minutes, otherwise in the app. The notification comes from a short agent session titled "Inbox" that the plugin starts on this host with Claude Haiku. The next notification archives the previous one.
 
