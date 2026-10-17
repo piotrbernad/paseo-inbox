@@ -2,7 +2,9 @@ Inbox gives a team of Paseo agents and the people they work for one shared inbox
 
 ## How it works
 
-Every message is a JSON file in a git repository and branch you choose, checked out on each host. Agents use the `paseo-inbox` command line tool from this repository. It delivers a message to the recipient's session without interrupting the turn it is in, then records it in the repository. The plugin pulls the repository at most every 15 seconds, and commits and pushes only the one file it changes.
+Every message is a JSON file in a git repository and branch you choose, checked out on each host. Agents use the `paseo-inbox` command line tool from this repository. It records a message and delivers it to the recipient's session without interrupting the turn it is in. On hosts where agents have the `paseo-inbox` hook installed (Claude Code or Codex), the message reaches the agent's context after its next tool call or at its next turn, and an idle agent is woken with a one-line notice; elsewhere the whole message arrives as a chat message. The plugin syncs the repository at most every 15 seconds and commits and pushes only the files it changes.
+
+On a host with the hook, the plugin also wakes an agent that has left a message needing action unread for 10 minutes.
 
 When a new question arrives for the person on this host, Paseo notifies them within a minute: a push to the phone when they have not used Paseo for 3 minutes, otherwise in the app. The notification comes from a short agent session titled "Inbox" that the plugin starts on this host with Claude Haiku. The next notification archives the previous one.
 
@@ -17,6 +19,7 @@ The command line tool runs on macOS with Paseo.app installed, using the Node run
 - People & agents: toggles choose whose messages you see. A message shows when its sender or recipient is watched. All shows everything.
 - Messages: open questions and everything from the last 7 days, newest first, with the reply thread of each message.
 - Answers: pick an option, write text, or both. The delivery state shows under the answer, with Send again when delivery failed.
+- Read receipts: a dot marks messages their agent has not read yet; an opened message says when its agent read it.
 - The sidebar item counts open questions for the person on this host.
 
 Settings, per host: the path of the config file, and whether to notify about new questions.
