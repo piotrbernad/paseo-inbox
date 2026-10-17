@@ -54,8 +54,8 @@ Each host reads `~/.paseo/inbox.json`. Set `PASEO_INBOX_CONFIG` to use another p
 | `roleLabel` | The Paseo agent label that names an agent's role. Defaults to `team-role`. |
 | `hookHosts` | Hosts whose agents have the hook installed (see [Delivery and hooks](#delivery-and-hooks)). Defaults to none: every message goes into the recipient's chat. |
 | `maxBodyChars` | The longest message, and the longest question context, in characters. Defaults to 200. |
-| `wakeText` | The chat message that wakes an idle agent on a hook host. Defaults to `New messages in your inbox. Read them: paseo-inbox read`. |
-| `noticeText` | The line the hook adds to an agent's context when new messages wait. `{count}` is the number of new messages, `{from}` their senders. Defaults to `Inbox: {count} unread (from {from}). Read them: paseo-inbox read`. |
+| `wakeText` | The chat message that wakes an idle agent on a hook host. Defaults to `New messages in your inbox. Read them with the shell command: paseo-inbox read`. |
+| `noticeText` | The line the hook adds to an agent's context when new messages wait. `{count}` is the number of new messages, `{from}` their senders. Defaults to `Inbox: {count} unread (from {from}). Read them with the shell command: paseo-inbox read`. |
 | `store` | The git repository, branch and local checkout of the inbox. `branch` defaults to `inbox`, `dir` to `~/.paseo/inbox-store`. |
 
 Pairing links are secrets. Keep the file out of git and readable only by you:
@@ -108,8 +108,8 @@ Reply: paseo-inbox send --from designer lead --re 20261017-1602-lead-k3f9 "…"
 
 Chat messages arrive in an agent's session as if its person typed them. With the hook, the chat stays for people: messages stay in the inbox, and an agent reads them only by running `paseo-inbox read` (or `show`). Nothing from a message reaches its context any other way.
 
-- **Recipient running**: nothing is sent to its chat. After its next tool call, or at its next turn, the hook adds one line, `Inbox: 2 unread (from EM — Engineering Manager, Design — Designer). Read them: paseo-inbox read`. Each batch of new messages is announced once.
-- **Recipient idle**: the wake text wakes it, `New messages in your inbox. Read them: paseo-inbox read`, without sender or content.
+- **Recipient running**: nothing is sent to its chat. After its next tool call, or at its next turn, the hook adds one line, `Inbox: 2 unread (from EM — Engineering Manager, Design — Designer). Read them with the shell command: paseo-inbox read`. Each batch of new messages is announced once.
+- **Recipient idle**: the wake text wakes it, `New messages in your inbox. Read them with the shell command: paseo-inbox read`, without sender or content.
 - **`send --fyi`**: never wakes anyone. The hook mentions the message at the recipient's next tool call or turn.
 - **Answers** to questions take the same path as messages.
 - **Fallback**: on a hook host, the plugin sends the wake text to an agent that has left a message needing action unread for 10 minutes (it made no tool calls, or went idle without a turn).

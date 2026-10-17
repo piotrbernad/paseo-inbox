@@ -139,5 +139,5 @@ test("the wake text comes from the config", async () => {
   const result = await cli(custom, asA, ["send", "--from", "lead", "designer", "Hej"], { PASEO_AGENT_ID: "lead-1" });
   assert.equal(result.code, 0, result.err);
   assert.deepEqual(hosts.steered.slice(before).map((s) => s.text), ["Masz nowe wiadomości. Przeczytaj: paseo-inbox read"]);
-  assert.equal(DEFAULT_WAKE_TEXT, "New messages in your inbox. Read them: paseo-inbox read");
+  assert.equal(DEFAULT_WAKE_TEXT, "New messages in your inbox. Read them with the shell command: paseo-inbox read");
 });

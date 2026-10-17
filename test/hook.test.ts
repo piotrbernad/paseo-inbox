@@ -100,13 +100,13 @@ test("the hook announces each batch of new messages once, by sender, and never p
   const second = await send("designer", "--fyi", "--re", first, "Also: no rush.");
   await cli(configB, asB, ["sync"]);
 
-  assert.equal(await hook(postToolUse), "Inbox: 2 unread (from Lead). Read them: paseo-inbox read");
+  assert.equal(await hook(postToolUse), "Inbox: 2 unread (from Lead). Read them with the shell command: paseo-inbox read");
   assert.equal(await hook(postToolUse), null, "announced once");
   assert.equal(await hook(prompt), null, "not at the next turn either");
 
   const third = await send("designer", "Third: KIWI-9.");
   await cli(configB, asB, ["sync"]);
-  assert.equal(await hook(prompt), "Inbox: 1 unread (from Lead). Read them: paseo-inbox read", "only the new batch");
+  assert.equal(await hook(prompt), "Inbox: 1 unread (from Lead). Read them with the shell command: paseo-inbox read", "only the new batch");
   batch = [first, second, third];
   for (const id of batch) assert.equal(readBy(id), null, "the hook writes no receipts");
 });
@@ -174,7 +174,7 @@ test("an answer from a person is announced from them and read like a message", a
   );
   assert.equal(answered.kind, "ok");
   await cli(configB, asB, ["sync"]);
-  assert.equal(await hook(postToolUse), "Inbox: 1 unread (from Alice). Read them: paseo-inbox read");
+  assert.equal(await hook(postToolUse), "Inbox: 1 unread (from Alice). Read them with the shell command: paseo-inbox read");
   const out = await read();
   assert.match(out, new RegExp(`\\[${id}\\] answer from Alice, `));
   assert.ok(
@@ -194,7 +194,7 @@ test("a new session with the role reads what its archived predecessor left unrea
   hosts.agents["host-b"].push(successor);
   try {
     await cli(configB, asB, ["sync"]);
-    assert.equal(await hook(postToolUse, "designer-2"), "Inbox: 1 unread (from Lead). Read them: paseo-inbox read");
+    assert.equal(await hook(postToolUse, "designer-2"), "Inbox: 1 unread (from Lead). Read them with the shell command: paseo-inbox read");
     assert.match(await read("designer-2"), new RegExp(`\\[${id}\\] from Lead, `));
     assert.equal(readBy(id), "designer-2");
     assert.equal((stored(id) as AgentMessage).read?.title, "Design — Designer");

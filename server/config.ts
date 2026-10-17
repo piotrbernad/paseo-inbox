@@ -4,8 +4,8 @@ import { z } from "zod";
 import { type Person, PersonSchema } from "../shared/message.ts";
 
 export const DEFAULT_CONFIG_PATH = "~/.paseo/inbox.json";
-export const DEFAULT_WAKE_TEXT = "New messages in your inbox. Read them: paseo-inbox read";
-export const DEFAULT_NOTICE_TEXT = "Inbox: {count} unread (from {from}). Read them: paseo-inbox read";
+export const DEFAULT_WAKE_TEXT = "New messages in your inbox. Read them with the shell command: paseo-inbox read";
+export const DEFAULT_NOTICE_TEXT = "Inbox: {count} unread (from {from}). Read them with the shell command: paseo-inbox read";
 
 export const ConfigSchema = z
   .object({

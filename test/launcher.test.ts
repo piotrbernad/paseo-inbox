@@ -49,7 +49,7 @@ test("anything else goes to Node: new commits, a due sync, another config, other
     moved: launch(postToolUse, { head: "0".repeat(40) }),
     due: launch(postToolUse, { due: Math.floor(Date.now() / 1000) - 1 }),
     otherConfig: launch(postToolUse, { config: join(root, "other.json") }),
-    prompt: launch(JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "New messages in your inbox. Read them: paseo-inbox read" })),
+    prompt: launch(JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "New messages in your inbox. Read them with the shell command: paseo-inbox read" })),
   };
   for (const [name, r] of Object.entries(cases)) {
     assert.equal(r.status, 1, name);
