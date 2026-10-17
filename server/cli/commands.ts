@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
@@ -13,9 +13,10 @@ import {
   partyLabel,
   type Person,
 } from "../../shared/message.ts";
-import { type Config, configPath, loadConfig } from "../config.ts";
+import { type Config, configPath, expandHome, loadConfig } from "../config.ts";
 import { type Connect, createDirectory, type Directory, paseoConnect } from "../hosts.ts";
 import { flushReceipts, runHook } from "../hook.ts";
+import { hookCommand, updateHookFile } from "../install-hooks.ts";
 import { readLegacyQuestions } from "../legacy.ts";
 import { formatWhen, withdraw } from "../questions.ts";
 import { newMessageId, type Recipient, send, tags } from "../send.ts";
@@ -71,6 +72,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       return 0;
     }
     if (command === "hook") return await hook(io);
+    if (command === "install-hooks") return await installHooks(rest, io);
     const handler = COMMANDS[command];
     if (!handler) throw new UsageError(`Unknown command: ${command}`);
     const config = await loadConfig(configPath(io.env.PASEO_INBOX_CONFIG));
@@ -242,6 +244,44 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     return 0;
   },
 };
+
+async function installHooks(args: string[], io: Io): Promise<number> {
+  const { values } = parse(args, {
+    claude: { type: "boolean" },
+    codex: { type: "boolean" },
+    "claude-settings": { type: "string" },
+    "codex-home": { type: "string" },
+    uninstall: { type: "boolean" },
+  });
+  const both = !values.claude && !values.codex;
+  const command = hookCommand(LAUNCHER);
+  const now = io.now?.() ?? new Date();
+  const uninstall = values.uninstall === true;
+  const targets: { name: string; path: string; note: string }[] = [];
+  if (both || values.claude) {
+    targets.push({
+      name: "Claude Code",
+      path: expandHome(values["claude-settings"] ?? "~/.claude/settings.json"),
+      note: "Claude Code picks the hook up in sessions started from now on.",
+    });
+  }
+  if (both || values.codex) {
+    const home = expandHome(values["codex-home"] ?? io.env.CODEX_HOME ?? "~/.codex");
+    targets.push({
+      name: "Codex",
+      path: join(home, "hooks.json"),
+      note: "Codex runs a new hook only once you trust it: open Codex, run /hooks and trust paseo-inbox.",
+    });
+  }
+  for (const target of targets) {
+    const { outcome, backup } = await updateHookFile(target.path, command, uninstall, now);
+    const where = { added: "added to", "already installed": "already installed in", removed: "removed from", "not installed": "not installed in" }[outcome];
+    io.out(`${target.name}: hook ${where} ${target.path}${backup ? ` (backup: ${backup})` : ""}`);
+    if (outcome === "added") io.out(`  ${target.note}`);
+  }
+  if (!uninstall) io.out(`Hook command: ${command}`);
+  return 0;
+}
 
 // A hook must never break its agent: every failure ends in exit 0 and no output.
 async function hook(io: Io): Promise<number> {
