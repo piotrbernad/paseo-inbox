@@ -25,7 +25,8 @@ paseo-inbox ask --to <person> --title "One decision" --context "2 sentences." --
 
 - At most 200 characters. Put details in a PR, ticket comment or file and send the link.
 - One message, one matter. Reply with `--re <ID>` so the thread stays together.
-- Do not send acknowledgements ("thanks", "got it"). Reply only when something changes or you need something.
+- Do not send acknowledgements ("thanks", "got it"); `send` refuses them. Reply only when something changes or you need something.
+- Do not reply to an `--fyi` message unless you need something. A reply to it does not wake its sender either.
 - `--fyi` for information that can wait for the recipient's next turn. Without it, an idle recipient is woken.
 - Sending never interrupts the recipient's current work.
 - Ask a person only what you cannot decide or infer yourself.

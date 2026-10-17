@@ -204,3 +204,25 @@ test("messages are short: send and ask refuse longer text with a hint, and send 
   assert.equal(commits(), before + 3, "only the three that fit were recorded");
   assert.equal(hosts.steered.length, steered + 2, "refused messages reach no one");
 });
+
+test("acknowledgements are refused; a reply to an --fyi message does not wake", async () => {
+  const send = (...args: string[]) => cli(configA, asA, ["send", "--from", "lead", ...args], { PASEO_AGENT_ID: "lead-1" });
+  for (const body of ["Thanks!", "OK, will do.", "Got it: review in a checkout-pr workspace, research in my own."]) {
+    const r = await send("designer", body);
+    assert.equal(r.code, 1, body);
+    assert.match(r.err, /reads as an acknowledgement/);
+  }
+  for (const body of ["OK, can you merge #12?", "Thanks, PR: https://example.com/pr/1", "Okapi bug found in the parser."]) {
+    assert.equal((await send("designer", body)).code, 0, body);
+  }
+  const polish = writeConfig(root, "host-a", remote, dirA, { ackWords: ["przyjąłem", "dzięki"] }, "inbox-host-a-pl");
+  const pl = await cli(polish, asA, ["send", "--from", "lead", "designer", "Przyjąłem: wczytam przy następnym zleceniu."], { PASEO_AGENT_ID: "lead-1" });
+  assert.match(pl.err, /reads as an acknowledgement \("przyjąłem…"\)/);
+
+  const fyi = await send("designer", "--fyi", "Skill updated, read it at your next task.");
+  const fyiId = fyi.out.match(/sent (\S+)/)?.[1] ?? "";
+  const reply = await cli(configB, asB, ["send", "--from", "designer", "lead", "--re", fyiId, "Which part changed: section 2 or 3?"], { PASEO_AGENT_ID: "designer-1" });
+  assert.equal(reply.code, 0, reply.err);
+  const replyId = reply.out.match(/sent (\S+)/)?.[1] ?? "";
+  assert.equal((stored(replyId) as { wake?: boolean }).wake, false);
+});

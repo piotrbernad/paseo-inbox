@@ -121,7 +121,14 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     const body = (values.file !== undefined ? await readFile(values.file, "utf8") : words.join(" ")).replace(/\s+$/, "");
     if (body.trim() === "") throw new UsageError("send needs a message, or --file path.");
     fits("The message", body, ctx.config.maxBodyChars);
+    refuseAcknowledgement(body, ctx.config.ackWords);
     if (values.re !== undefined && !/^[a-z0-9-]+$/.test(values.re)) throw new UsageError(`Invalid --re id: ${values.re}`);
+    // A reply to a message that did not wake its recipient does not wake its sender either.
+    let wake = !values.fyi;
+    if (wake && values.re !== undefined) {
+      const parent = await ctx.store.read(values.re).catch(() => null);
+      if (parent !== null && typeof parent === "object" && (parent as { wake?: boolean }).wake === false) wake = false;
+    }
 
     const from = await sender(values.from, ctx, { allowPerson: true });
     const sent = await send(
@@ -132,7 +139,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
         body,
         ref: values.ref ?? null,
         inReplyTo: values.re ?? null,
-        wake: !values.fyi,
+        wake,
       },
     );
     const label = partyName(sent.to, ctx.config.people);
@@ -440,6 +447,21 @@ function describe(m: Message, people: readonly Person[], focus: boolean): string
 
 const MAX_TITLE_CHARS = 100;
 const MAX_OPTION_CHARS = 120;
+
+function refuseAcknowledgement(body: string, words: string[]): void {
+  const text = body.trim().toLowerCase();
+  if (/\?|https?:\/\/|#\d/.test(text)) return;
+  const word = words.find((w) => {
+    const lower = w.toLowerCase();
+    return text.startsWith(lower) && !/[\p{L}\p{N}]/u.test(text.charAt(lower.length));
+  });
+  if (word) {
+    throw new Error(
+      `This reads as an acknowledgement ("${word}…"). Do not send acknowledgements: reply only when something ` +
+        "changes or you need something.",
+    );
+  }
+}
 
 function fits(what: string, text: string, max: number): void {
   const length = [...text].length;
