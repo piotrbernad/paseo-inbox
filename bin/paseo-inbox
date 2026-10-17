@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Runs the paseo-inbox CLI with the Node bundled in Paseo.app, so nothing needs installing.
+set -euo pipefail
+
+source="${BASH_SOURCE[0]}"
+while [ -L "$source" ]; do
+  dir="$(cd -P "$(dirname "$source")" && pwd)"
+  source="$(readlink "$source")"
+  case "$source" in /*) ;; *) source="$dir/$source" ;; esac
+done
+root="$(cd -P "$(dirname "$source")/.." && pwd)"
+
+resources="${PASEO_RESOURCES:-}"
+if [ -z "$resources" ]; then
+  for candidate in /Applications/Paseo.app/Contents/Resources "$HOME/Applications/Paseo.app/Contents/Resources"; do
+    if [ -e "$candidate/app.asar" ]; then resources="$candidate"; break; fi
+  done
+fi
+if [ -z "$resources" ] || [ ! -e "$resources/app.asar" ]; then
+  echo "paseo-inbox: Paseo.app not found; set PASEO_RESOURCES to its Contents/Resources directory" >&2
+  exit 1
+fi
+helper="$resources/../Frameworks/Paseo Helper.app/Contents/MacOS/Paseo Helper"
+
+exec env ELECTRON_RUN_AS_NODE=1 PASEO_NODE_ENV=production PASEO_RESOURCES="$resources" "$helper" \
+  --disable-warning=DEP0040 --disable-warning=ExperimentalWarning \
+  "$resources/app.asar.unpacked/dist/daemon/node-entrypoint-runner.js" \
+  node-script "$root/server/cli/main.ts" "$@"
