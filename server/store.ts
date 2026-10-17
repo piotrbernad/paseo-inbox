@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, utimes, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, utimes, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { MESSAGE_ID, type Message, MessageSchema } from "../shared/message.ts";
@@ -299,9 +299,21 @@ export function storeLockPath(dir: string): string {
   return `${resolve(dir)}.lock`;
 }
 
+// Local state of this checkout that is not in the store: receipts waiting for a sync, hook cursors.
+export function stateDir(dir: string): string {
+  return join(dir, ".git", "paseo-inbox");
+}
+
 // Touched after every successful sync; hooks read its age to throttle their own syncs.
 export function syncStampPath(dir: string): string {
-  return join(dir, ".git", "paseo-inbox", "synced-at");
+  return join(stateDir(dir), "synced-at");
+}
+
+export async function writeAtomic(path: string, text: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const draft = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}`;
+  await writeFile(draft, text);
+  await rename(draft, path);
 }
 
 async function touch(path: string): Promise<void> {

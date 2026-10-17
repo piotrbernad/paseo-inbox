@@ -4,6 +4,7 @@ import { z } from "zod";
 import { type Person, PersonSchema } from "../shared/message.ts";
 
 export const DEFAULT_CONFIG_PATH = "~/.paseo/inbox.json";
+export const DEFAULT_NOTICE_TEXT = "Inbox: {count} unread (from {from}). Read them: paseo-inbox read";
 
 export const ConfigSchema = z
   .object({
@@ -15,6 +16,9 @@ export const ConfigSchema = z
     // Hosts whose agents run `paseo-inbox hook`: messages reach them through the hook, and only an
     // idle recipient gets a short wake-up notice. Other hosts get the whole message in the chat.
     hookHosts: z.array(z.string().min(1)).default([]),
+    // The line the hook adds to an agent's context when new messages wait for it. {count} is the
+    // number of new messages, {from} their senders' session names.
+    noticeText: z.string().min(1).default(DEFAULT_NOTICE_TEXT),
     store: z.object({
       repo: z.string().min(1),
       branch: z.string().min(1).default("inbox"),

@@ -44,9 +44,10 @@ export function writeConfig(
   self: "host-a" | "host-b",
   remote: string,
   storeDir: string,
-  extra: { hookHosts?: string[] } = {},
+  extra: { hookHosts?: string[]; noticeText?: string; wakeText?: string; maxBodyChars?: number } = {},
+  name = `inbox-${self}${extra.hookHosts ? "-hooks" : ""}`,
 ): string {
-  const path = join(root, `inbox-${self}${extra.hookHosts ? "-hooks" : ""}.json`);
+  const path = join(root, `${name}.json`);
   writeFileSync(
     path,
     JSON.stringify({

@@ -35,7 +35,8 @@ export const DeliverySchema = z.discriminatedUnion("kind", [
 ]);
 export type Delivery = z.infer<typeof DeliverySchema>;
 
-// The recipient agent's read receipt, written when a hook put the message into its context.
+// The recipient agent's read receipt, written when it read the message (`paseo-inbox read` or
+// `show`), or when the whole message went into its chat.
 export const ReadSchema = z.object({
   at: Iso,
   agentId: z.string().min(1),
@@ -82,8 +83,6 @@ const envelope = {
   body: z.string(),
 };
 
-// `read` is set once the message is in its recipient's context: put there by the hook, or sent
-// whole into its chat.
 export const AgentMessageSchema = z.object({
   ...envelope,
   to: AgentPartySchema,

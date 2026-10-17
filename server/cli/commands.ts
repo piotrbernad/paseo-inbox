@@ -13,16 +13,19 @@ import {
   type Party,
   partyName,
   type Person,
+  type Read,
+  receiptOf,
   withTitles,
 } from "../../shared/message.ts";
 import { type Config, configPath, expandHome, loadConfig } from "../config.ts";
 import { type Connect, createDirectory, type Directory, paseoConnect, withTimeout } from "../hosts.ts";
-import { flushReceipts, runHook } from "../hook.ts";
+import { runHook } from "../hook.ts";
 import { hookCommand, updateHookFile } from "../install-hooks.ts";
 import { readLegacyQuestions } from "../legacy.ts";
 import { formatWhen, withdraw } from "../questions.ts";
 import { newMessageId, type Recipient, send, tags } from "../send.ts";
 import { createStore, type Store } from "../store.ts";
+import { flushReceipts, queuedIds, queueReceipts, type Reader, readText, unreadFor } from "../unread.ts";
 
 export type Io = {
   env: NodeJS.ProcessEnv;
@@ -50,14 +53,17 @@ const HELP = `paseo-inbox: messages and questions between Paseo agents and their
   paseo-inbox list [--all] [--for PARTY]
       Open questions; --all adds everything from the last 7 days.
       PARTY is person:ID, role:ROLE, agent:AGENT_ID, or a bare person id or role.
+  paseo-inbox read [--peek]
+      Print this agent's unread messages, oldest first, and mark them read. --peek leaves them unread.
   paseo-inbox show ID
       Print a message in full, with the messages it replies to and the replies to it.
+      Inside the agent the message is for, marks it read.
   paseo-inbox withdraw ID [reason]
       Withdraw an open question.
   paseo-inbox import-questions DIR
       Import questions/<id>.json files of the earlier format. Safe to run again.
   paseo-inbox hook
-      Agent hook (UserPromptSubmit, PostToolUse): adds unread messages to the agent's context.
+      Agent hook (UserPromptSubmit, PostToolUse): tells the agent once when new messages wait.
   paseo-inbox install-hooks [--claude] [--codex] [--claude-settings PATH] [--codex-home PATH] [--uninstall]
       Add the hook to Claude Code and Codex settings (both when neither flag is given).
   paseo-inbox sync
@@ -200,7 +206,25 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     return 0;
   },
 
-  async show(args, { config, store, directory, io }) {
+  async read(args, ctx) {
+    const { values } = parse(args, { peek: { type: "boolean" } });
+    const { config, store, directory, io } = ctx;
+    const agentId = io.env.PASEO_AGENT_ID?.trim();
+    if (!agentId) throw new UsageError("read runs inside a Paseo agent (PASEO_AGENT_ID).");
+    const { reader, title } = await readerOf(agentId, ctx);
+    const syncError = await flushReceipts(store, config.store.dir);
+    if (syncError) io.err(`paseo-inbox: showing local data, sync failed: ${syncError}`);
+    const { messages } = await store.list();
+    const now = ctx.now();
+    const unread = unreadFor(messages, reader, await queuedIds(config.store.dir), now.getTime());
+    io.out(readText(await retitle(unread, directory), config));
+    if (values.peek || unread.length === 0) return 0;
+    await markRead(unread.map((m) => m.id), { at: now.toISOString(), agentId, title }, ctx);
+    return 0;
+  },
+
+  async show(args, ctx) {
+    const { config, store, directory, io } = ctx;
     const { positionals } = parse(args, {});
     const [id] = positionals;
     if (!id || positionals.length > 1) throw new UsageError("show needs one message id.");
@@ -211,6 +235,15 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     if (!message) throw new Error(`No message ${id}.`);
     const thread = await retitle(threadOf(message, messages), directory);
     io.out(thread.map((m) => describe(m, config.people, m.id === id)).join("\n\n"));
+
+    const agentId = io.env.PASEO_AGENT_ID?.trim();
+    if (agentId && receiptOf(message)?.read === null) {
+      const now = ctx.now();
+      const { reader, title } = await readerOf(agentId, ctx);
+      if (unreadFor([message], reader, new Set(), now.getTime()).length > 0) {
+        await markRead([message.id], { at: now.toISOString(), agentId, title }, ctx);
+      }
+    }
     return 0;
   },
 
@@ -293,7 +326,6 @@ async function hook(io: Io): Promise<number> {
     const directory = createDirectory(config, io.connect ?? paseoConnect());
     const output = await runHook(input, {
       config,
-      store: createStore(config.store),
       agentId: io.env.PASEO_AGENT_ID?.trim(),
       now: () => io.now?.() ?? new Date(),
       lookupRole: (agentId) =>
@@ -316,9 +348,23 @@ async function hook(io: Io): Promise<number> {
 
 const LOOKUP_MS = 3_000;
 
+// The agent this command runs in, as its daemon knows it.
+async function readerOf(agentId: string, { config, directory }: Ctx): Promise<{ reader: Reader; title: string | null }> {
+  const self = await withTimeout(directory.self(agentId), LOOKUP_MS).catch(() => null);
+  const role = self?.agent.labels?.[config.roleLabel] ?? null;
+  return { reader: { agentId, role, host: config.self }, title: self?.agent.title ?? null };
+}
+
+// Queues the receipts, then commits them in one commit; a failed commit is retried by the next sync.
+async function markRead(ids: string[], read: Read, { config, store, io }: Ctx): Promise<void> {
+  await queueReceipts(config.store.dir, ids, read);
+  const error = await flushReceipts(store, config.store.dir);
+  if (error) io.err(`paseo-inbox: marked read here; the store gets the receipts at the next sync (${error})`);
+}
+
 // Messages as shown: their agents carry their current session titles, when their hosts answer in
 // time.
-async function retitle(messages: Message[], directory: Directory): Promise<Message[]> {
+async function retitle<M extends Message>(messages: M[], directory: Directory): Promise<M[]> {
   const titles = await withTimeout(directory.titles(agentsIn(messages)), LOOKUP_MS).catch(() => new Map<string, string>());
   return messages.map((m) => withTitles(m, titles));
 }
