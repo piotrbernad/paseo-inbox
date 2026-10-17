@@ -350,7 +350,7 @@ async function hook(io: Io): Promise<number> {
       now: () => io.now?.() ?? new Date(),
       lookupRole: (agentId) =>
         withTimeout(
-          directory.self(agentId).then((found) => found?.agent.labels?.[config.roleLabel] ?? null),
+          directory.self(agentId).then((found) => found?.agent.labels?.[config.roleLabel]?.trim() || null),
           LOOKUP_MS,
         ),
       syncInBackground: io.syncInBackground ?? syncInBackground,
@@ -371,7 +371,7 @@ const LOOKUP_MS = 3_000;
 // The agent this command runs in, as its daemon knows it.
 async function readerOf(agentId: string, { config, directory }: Ctx): Promise<{ reader: Reader; title: string | null }> {
   const self = await withTimeout(directory.self(agentId), LOOKUP_MS).catch(() => null);
-  const role = self?.agent.labels?.[config.roleLabel] ?? null;
+  const role = self?.agent.labels?.[config.roleLabel]?.trim() || null;
   return { reader: { agentId, role, host: config.self }, title: self?.agent.title ?? null };
 }
 
@@ -491,7 +491,7 @@ async function sender(fromArg: string | undefined, ctx: Ctx, opts: { allowPerson
   }
   const agentId = io.env.PASEO_AGENT_ID?.trim() || null;
   const self = agentId ? await directory.self(agentId).catch(() => null) : null;
-  const role = fromArg ?? self?.agent.labels?.[config.roleLabel] ?? null;
+  const role = fromArg ?? (self?.agent.labels?.[config.roleLabel]?.trim() || null);
   if (role === null && agentId === null) {
     throw new UsageError("Pass --from ROLE, or run inside a Paseo agent (PASEO_AGENT_ID).");
   }

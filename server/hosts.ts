@@ -77,7 +77,7 @@ export function createDirectory(config: Config, connect: Connect) {
     const { agent, host } = located;
     return {
       kind: "agent",
-      role: agent.labels?.[config.roleLabel] ?? null,
+      role: agent.labels?.[config.roleLabel]?.trim() || null,
       agentId: agent.id,
       title: agent.title ?? null,
       host,
