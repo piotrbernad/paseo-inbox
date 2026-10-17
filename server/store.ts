@@ -1,12 +1,17 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, utimes, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { MESSAGE_ID, type Message, MessageSchema } from "../shared/message.ts";
+import { LockBusy, withLock } from "./lock.ts";
 
 const run = promisify(execFile);
-const PULL_EVERY_MS = 15_000;
+const SYNC_EVERY_MS = 15_000;
+// Network git calls give up well before a held lock counts as abandoned.
+const GIT_TIMEOUT_MS = 60_000;
+// Other hosts push to the same branch; each rejected push costs a sync and a short random wait.
+const PUSH_ATTEMPTS = 8;
 const DIR = "messages";
 
 export type Write = { kind: "ok"; message: Message } | { kind: "refused"; reason: string };
@@ -21,43 +26,103 @@ Written by paseo-inbox. One JSON file per message in \`messages/\`. Do not edit 
 
 export function createStore(opts: { dir: string; branch: string; repo: string }) {
   const { dir, branch, repo } = opts;
-  let lastPullAt = 0;
-  let lastPullError: string | null = null;
+  const lockPath = storeLockPath(dir);
+  const tracking = `refs/remotes/origin/${branch}`;
+  let lastSyncAt = 0;
+  let lastSyncError: string | null = null;
   let queue: Promise<unknown> = Promise.resolve();
 
-  // The CLI, the plugin and other hosts share this checkout and its remote, so every git step in
-  // this process goes through one queue and waits out an index.lock held by another process.
-  function serial<T>(fn: () => Promise<T>): Promise<T> {
-    const next = queue.then(fn, fn);
+  // The CLI, the plugin, hooks and other hosts share this checkout and its remote. Every git
+  // sequence runs in this process's queue and, across processes, under the store's lock file.
+  function serial<T>(fn: () => Promise<T>, lock: { waitMs?: number } = {}): Promise<T> {
+    const locked = async () => {
+      await mkdir(dirname(lockPath), { recursive: true });
+      return withLock(lockPath, fn, lock);
+    };
+    const next = queue.then(locked, locked);
     queue = next.catch(() => {});
     return next;
   }
 
-  async function git(...args: string[]): Promise<string> {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        const { stdout } = await run("git", ["-C", dir, ...args], {
-          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-        });
-        return stdout;
-      } catch (error) {
-        const message = errorText(error);
-        if (!message.includes("index.lock") || attempt >= 6) throw new Error(message);
-        await sleep(300);
-      }
+  function git(...args: string[]): Promise<string> {
+    return runGit(dir, args);
+  }
+
+  // Fetch and replay onto origin/<branch> by name. `git pull` resolves FETCH_HEAD, which another
+  // process's fetch can rewrite halfway ("Cannot rebase onto multiple branches").
+  async function sync(): Promise<void> {
+    try {
+      await git("fetch", "-q", "origin", `+refs/heads/${branch}:${tracking}`);
+      await git("rebase", "-q", "--autostash", tracking).catch(async (error) => {
+        await git("rebase", "--abort").catch(() => {});
+        throw error;
+      });
+      lastSyncError = null;
+      await touch(syncStampPath(dir));
+    } catch (error) {
+      lastSyncError = errorText(error);
+      throw error;
+    } finally {
+      lastSyncAt = Date.now();
     }
   }
 
-  async function pull(): Promise<void> {
-    try {
-      await git("pull", "-q", "--rebase", "--autostash", "origin", branch);
-      lastPullError = null;
-    } catch (error) {
-      lastPullError = errorText(error);
-      throw error;
-    } finally {
-      lastPullAt = Date.now();
+  async function remoteHasBranch(): Promise<boolean> {
+    const heads = await git("ls-remote", "--heads", "origin", branch).catch((error) => {
+      throw new Error(`Cannot reach ${repo}: ${errorText(error)}`);
+    });
+    return heads.trim() !== "";
+  }
+
+  // Converges any state of the checkout (missing, empty, interrupted at any step) on a clone of the
+  // remote branch, creating the branch when the remote has none.
+  async function initLocked(): Promise<"existing" | "cloned" | "created"> {
+    await mkdir(dir, { recursive: true });
+    const fresh = !existsSync(join(dir, ".git"));
+    if (fresh) {
+      if ((await readdir(dir)).length > 0) throw new Error(`${dir} exists and is not a git checkout.`);
+      await git("init", "-q", "-b", branch);
     }
+    const url = await git("remote", "get-url", "origin").then((s) => s.trim(), () => null);
+    if (url === null) await git("remote", "add", "-t", branch, "origin", repo);
+    else if (url !== repo) throw new Error(`${dir} tracks ${url}, not ${repo}.`);
+    const current = (await git("symbolic-ref", "-q", "--short", "HEAD").catch(() => "")).trim();
+    if (current !== branch) throw new Error(`${dir} is on ${current || "a detached HEAD"}, not on branch ${branch}.`);
+    const hasCommit = await git("rev-parse", "-q", "--verify", "HEAD").then(() => true, () => false);
+
+    if (await remoteHasBranch()) {
+      await git("fetch", "-q", "origin", `+refs/heads/${branch}:${tracking}`);
+      const related = hasCommit && (await git("merge-base", "HEAD", tracking).then(() => true, () => false));
+      if (!related) {
+        // Nothing here yet, or only a first commit that lost the race to create the branch.
+        await git("reset", "-q", "--hard", tracking);
+        await upstream();
+        return "cloned";
+      }
+      await sync();
+      return fresh ? "cloned" : "existing";
+    }
+
+    if (!hasCommit) {
+      await writeFile(join(dir, "README.md"), README);
+      await git("add", "README.md");
+      await git("commit", "-q", "-m", "inbox: create store");
+    }
+    try {
+      await git("push", "-q", "origin", `HEAD:${branch}`);
+      await upstream();
+      return "created";
+    } catch {
+      // Another host created the branch first: adopt theirs.
+      await git("fetch", "-q", "origin", `+refs/heads/${branch}:${tracking}`);
+      await git("reset", "-q", "--hard", tracking);
+      await upstream();
+      return "cloned";
+    }
+  }
+
+  async function upstream(): Promise<void> {
+    await git("branch", "-q", `--set-upstream-to=origin/${branch}`).catch(() => {});
   }
 
   function pathOf(id: string): string {
@@ -66,13 +131,7 @@ export function createStore(opts: { dir: string; branch: string; repo: string })
 
   async function readOne(id: string): Promise<Message | null> {
     const raw = await readFile(join(dir, pathOf(id)), "utf8").catch(() => null);
-    if (raw === null) return null;
-    try {
-      const parsed = MessageSchema.safeParse(JSON.parse(raw));
-      return parsed.success ? parsed.data : null;
-    } catch {
-      return null;
-    }
+    return raw === null ? null : parseMessage(raw);
   }
 
   async function readAll(): Promise<{ messages: Message[]; skipped: number }> {
@@ -88,18 +147,19 @@ export function createStore(opts: { dir: string; branch: string; repo: string })
   }
 
   // Commits exactly these files and pushes. A rejected push undoes the local commit and starts
-  // again from a fresh pull, so a change made meanwhile on another host is re-checked by `prepare`
+  // again from a fresh sync, so a change made meanwhile on another host is re-checked by `prepare`
   // instead of being rebased over.
   async function commit(
     verb: string,
     prepare: () => Promise<{ files: { id: string; message: Message }[] } | string>,
   ): Promise<{ files: { id: string; message: Message }[] } | string> {
     let lastError = "";
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt++) {
+      if (attempt > 1) await sleep(Math.random() * 200 * attempt);
       try {
-        await pull();
+        await sync();
       } catch (error) {
-        return `Could not pull the inbox store: ${errorText(error)}`;
+        return `Could not sync the inbox store: ${errorText(error)}`;
       }
       const prepared = await prepare();
       if (typeof prepared === "string" || prepared.files.length === 0) return prepared;
@@ -122,56 +182,41 @@ export function createStore(opts: { dir: string; branch: string; repo: string })
     return `Could not push to the inbox store: ${lastError}`;
   }
 
+  function missing(): string | null {
+    return existsSync(join(dir, ".git")) ? null : `No inbox store at ${dir}. Run: paseo-inbox init`;
+  }
+
   return {
     dir,
 
     init(): Promise<"existing" | "cloned" | "created"> {
+      return serial(initLocked);
+    },
+
+    // Fetches and fast-forwards now; `waitMs: 0` skips the sync when another process holds the lock.
+    sync(lock: { waitMs?: number } = {}): Promise<string | null> {
       return serial(async () => {
-        if (existsSync(join(dir, ".git"))) return "existing";
-        const heads = await run("git", ["ls-remote", "--heads", repo, branch], {
-          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-        }).catch((error) => {
-          throw new Error(`Cannot reach ${repo}: ${errorText(error)}`);
-        });
-        if (heads.stdout.trim() !== "") {
-          await run("git", ["clone", "-q", "--branch", branch, "--single-branch", repo, dir]);
-          return "cloned";
-        }
-        await mkdir(dir, { recursive: true });
-        await run("git", ["init", "-q", "-b", branch, dir]);
-        await git("remote", "add", "origin", repo);
-        await writeFile(join(dir, "README.md"), README);
-        await git("add", "README.md");
-        await git("commit", "-q", "-m", "inbox: create store");
-        try {
-          await git("push", "-q", "origin", `HEAD:${branch}`);
-          await git("branch", "-q", `--set-upstream-to=origin/${branch}`).catch(() => {});
-          return "created";
-        } catch {
-          // Another host created the branch first: adopt theirs.
-          await git("fetch", "-q", "origin", branch);
-          await git("reset", "-q", "--hard", "FETCH_HEAD");
-          return "cloned";
-        }
-      });
+        const absent = missing();
+        if (absent) return absent;
+        return sync().then(() => null, errorText);
+      }, lock).catch((error) => (error instanceof LockBusy ? null : errorText(error)));
     },
 
     list(): Promise<{ messages: Message[]; skipped: number; syncError: string | null }> {
       return serial(async () => {
-        if (!existsSync(join(dir, ".git"))) {
-          return { messages: [], skipped: 0, syncError: `No inbox store at ${dir}. Run: paseo-inbox init` };
-        }
-        if (Date.now() - lastPullAt >= PULL_EVERY_MS) await pull().catch(() => {});
-        return { ...(await readAll()), syncError: lastPullError };
+        const absent = missing();
+        if (absent) return { messages: [], skipped: 0, syncError: absent };
+        if (Date.now() - lastSyncAt >= SYNC_EVERY_MS) await sync().catch(() => {});
+        return { ...(await readAll()), syncError: lastSyncError };
       });
     },
 
     read(id: string): Promise<Message | null | string> {
       return serial(async () => {
         try {
-          await pull();
+          await sync();
         } catch (error) {
-          return `Could not pull the inbox store: ${errorText(error)}`;
+          return `Could not sync the inbox store: ${errorText(error)}`;
         }
         return readOne(id);
       });
@@ -231,4 +276,47 @@ export function errorText(error: unknown): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Next to the checkout rather than inside it, so `init` can take it before the directory exists.
+export function storeLockPath(dir: string): string {
+  return `${resolve(dir)}.lock`;
+}
+
+// Touched after every successful sync; hooks read its age to throttle their own syncs.
+export function syncStampPath(dir: string): string {
+  return join(dir, ".git", "paseo-inbox", "synced-at");
+}
+
+async function touch(path: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const now = new Date();
+  await utimes(path, now, now).catch(() => writeFile(path, ""));
+}
+
+export function parseMessage(raw: string): Message | null {
+  try {
+    const parsed = MessageSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+// Waits out an index.lock left by a git process outside this package (an editor, a shell).
+export async function runGit(dir: string, args: string[]): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const { stdout } = await run("git", ["-C", dir, ...args], {
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        timeout: GIT_TIMEOUT_MS,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      return stdout;
+    } catch (error) {
+      const message = errorText(error);
+      if (!message.includes("index.lock") || attempt >= 6) throw new Error(message);
+      await sleep(300);
+    }
+  }
 }

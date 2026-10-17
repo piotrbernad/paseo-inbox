@@ -141,7 +141,7 @@ type Message = {
 };
 ```
 
-Every write commits only its own file. Pulls use `--autostash`, so other files in the checkout stay untouched. When a push is rejected, the commit is undone and the change is checked again against a fresh pull, so two people answering the same question at once get one answer and one refusal.
+Every write commits only its own files. The CLI, the plugin and hooks on one host share the checkout, so every git sequence (init, sync, write and push) runs under a lock file next to it, `<store dir>.lock`; a lock whose process is gone, or older than two minutes, is taken over. A sync fetches the branch and rebases onto `origin/<branch>` with `--autostash`, so other files in the checkout stay untouched. When a push is rejected, the commit is undone and the change is checked again against a fresh sync, so two people answering the same question at once get one answer and one refusal. `init` can run any number of times, from several processes at once, and repairs a checkout left half set up.
 
 ## Development
 
