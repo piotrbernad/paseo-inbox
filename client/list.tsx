@@ -1,6 +1,6 @@
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { Pressable, Text, View } from "react-native";
-import { type Message, nextWatched } from "../shared/message.ts";
+import { lastActivity, type Message, nextWatched } from "../shared/message.ts";
 import type { ListOutput } from "../shared/rpc.ts";
 import { labeler } from "./data.ts";
 import { ago } from "./format.ts";
@@ -38,7 +38,7 @@ export function MessageRow(props: {
           {prefix ? `${prefix} · ` : ""}
           {label(message.from)} → {label(message.to)}
         </Text>
-        <Text style={styles.small}>{ago(message.sentAt)}</Text>
+        <Text style={styles.small}>{ago(lastActivity(message))}</Text>
       </View>
       <View style={styles.rowTop}>
         <Text numberOfLines={1} style={[styles.rowSubject, { flex: 1 }]}>
