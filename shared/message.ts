@@ -87,7 +87,7 @@ export const AgentMessageSchema = z.object({
   ...envelope,
   to: AgentPartySchema,
   question: z.null(),
-  // false (`send --fyi`): never wake an idle recipient; it reads the message at its next turn.
+  // false (`send --fyi`): never wake an idle recipient; its hook mentions the message at its next turn.
   wake: z.boolean().default(true),
   read: ReadSchema.nullable(),
 });

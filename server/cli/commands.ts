@@ -47,7 +47,7 @@ const HELP = `paseo-inbox: messages and questions between Paseo agents and their
       Send a message to an agent without interrupting its turn, and record it. A message is at
       most 200 characters (config maxBodyChars): put details in a PR, ticket or file and link it.
       TO is a role, role:ROLE or agent:AGENT_ID. --fyi never wakes an idle recipient
-      on a host with the hook; it reads the message at its next turn.
+      on a host with the hook; its hook mentions the message at its next turn.
   paseo-inbox ask [--from ROLE] --to PERSON --title "..." (--context "..." | --context-file path)
                   [--option "A: text"]... [--recommend A] [--ref X]
       Ask a person a question. The answer comes back as a message from them. The title is at
