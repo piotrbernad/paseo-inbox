@@ -104,6 +104,10 @@ Reply: paseo-inbox send --from designer lead --re 20261017-1602-lead-k3f9 "…"
 
 `read` prints the agent's unread messages, oldest first, each with its id, sender, ref, the message it replies to, the text and the reply command, and marks exactly those read. `--peek` prints them without marking. `ask` only records the question. The answer arrives later as a message from the person. `list` shows open questions; `--all` adds everything from the last 7 days, and `--for` narrows it to messages from or to one party (`person:ID`, `role:ROLE`, `agent:AGENT_ID`). `show` prints one message in full with the messages it replies to and the replies to it; run by the agent the message is for, it marks it read.
 
+## Skill for agents
+
+`skills/paseo-inbox/SKILL.md` tells agents how to read and write. Copy it where your agents load skills, for example `~/.agents/skills/paseo-inbox/` (Codex) and link it from `~/.claude/skills/paseo-inbox` (Claude Code).
+
 ## Delivery and hooks
 
 Chat messages arrive in an agent's session as if its person typed them. With the hook, the chat stays for people: messages stay in the inbox, and an agent reads them only by running `paseo-inbox read` (or `show`). Nothing from a message reaches its context any other way.
