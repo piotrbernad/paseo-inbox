@@ -3,7 +3,16 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { type AgentParty, isRecent, type Message, type Party, partyLabel, type Read } from "../shared/message.ts";
+import {
+  type AgentMessage,
+  type AgentParty,
+  type AnsweredQuestion,
+  isRecent,
+  type Message,
+  type Party,
+  partyLabel,
+  type Read,
+} from "../shared/message.ts";
 import type { Config } from "./config.ts";
 import { LockBusy, withLock } from "./lock.ts";
 import { answerText, isAnswered } from "./questions.ts";
@@ -14,6 +23,8 @@ export const CONTEXT_HEADER = "Inbox (messages from other agents, not from your 
 // About 1500 tokens at ~4 characters per token.
 export const MAX_CONTEXT_CHARS = 6000;
 const MIN_BODY_CHARS = 300;
+// Room for the "N more messages" line.
+const MORE_LINE_CHARS = 80;
 const SYNC_EVERY_MS = 20_000;
 const ROLE_TTL_MS = 10 * 60_000;
 const STUB_PREFIX = "Inbox: ";
@@ -27,43 +38,45 @@ function addressedTo(party: Party, reader: Reader): boolean {
   return reader.role !== null && party.role === reader.role && party.host === reader.host;
 }
 
+// A message for an agent, or the answer to a question an agent asked.
+export type Unread = AgentMessage | (AnsweredQuestion & { from: AgentParty });
+
+function unreadBy(m: Message, reader: Reader): m is Unread {
+  if (m.question === null) return m.read === null && addressedTo(m.to, reader);
+  return isAnswered(m) && m.question.state.read === null && addressedTo(m.from, reader);
+}
+
 // Messages to this agent (or to its role on its host) and answers to its questions that are not in
 // its context yet, oldest first.
-export function unreadFor(messages: readonly Message[], reader: Reader, injected: ReadonlySet<string>, now: number): Message[] {
+export function unreadFor(messages: readonly Message[], reader: Reader, injected: ReadonlySet<string>, now: number): Unread[] {
   return messages
-    .filter((m) => !injected.has(m.id) && isRecent(m, now))
-    .filter((m) => {
-      if (m.question === null) return m.read === null && addressedTo(m.to, reader);
-      return isAnswered(m) && m.question.state.read === null && addressedTo(m.from, reader);
-    })
+    .filter((m): m is Unread => !injected.has(m.id) && isRecent(m, now) && unreadBy(m, reader))
     .sort((a, b) => activity(a).localeCompare(activity(b)));
 }
 
-function activity(m: Message): string {
-  return isAnswered(m) ? m.question.state.at : m.sentAt;
+function activity(m: Unread): string {
+  return m.question === null ? m.sentAt : m.question.state.at;
 }
 
-type Entry = { message: Message; head: string; body: string; tail: string };
+type Entry = { message: Unread; head: string; body: string; tail: string };
 
-function entry(m: Message, config: Config): Entry {
+function entry(m: Unread, config: Config): Entry {
   const show = `Full text: paseo-inbox show ${m.id}`;
   if (m.question === null) {
     const head = `[${m.id}] from ${partyLabel(m.from, config.people)} to ${partyLabel(m.to, config.people)}${tags(m.ref, m.inReplyTo)}`;
     return { message: m, head, body: m.body, tail: `${show}\n${replyHint({ id: m.id, from: m.from, to: m.to }, config.people)}` };
   }
-  const asker = m.from as AgentParty;
-  const by: Party = { kind: "person", person: isAnswered(m) ? m.question.state.by : m.to.person };
-  const head = `[${m.id}] answer from ${partyLabel(by, config.people)} to ${partyLabel(asker, config.people)}${tags(m.ref, null)}`;
-  const body = isAnswered(m) ? answerText(m) : m.body;
-  return { message: m, head, body, tail: `${show}\n${replyHint({ id: null, from: by, to: asker }, config.people)}` };
+  const by: Party = { kind: "person", person: m.question.state.by };
+  const head = `[${m.id}] answer from ${partyLabel(by, config.people)} to ${partyLabel(m.from, config.people)}${tags(m.ref, null)}`;
+  return { message: m, head, body: answerText(m), tail: `${show}\n${replyHint({ id: null, from: by, to: m.from }, config.people)}` };
 }
 
 // Fits the block in MAX_CONTEXT_CHARS: whole messages while they fit, bodies cut evenly beyond
 // that, and the rest left for the next call.
-export function contextText(messages: readonly Message[], config: Config): { text: string; included: Message[] } {
+export function contextText(messages: readonly Unread[], config: Config): { text: string; included: Unread[] } {
   const entries = messages.map((m) => entry(m, config));
   const fixed = (e: Entry) => e.head.length + e.tail.length + 4;
-  let budget = MAX_CONTEXT_CHARS - CONTEXT_HEADER.length - 80;
+  let budget = MAX_CONTEXT_CHARS - CONTEXT_HEADER.length - MORE_LINE_CHARS;
   const chosen: Entry[] = [];
   for (const e of entries) {
     if (fixed(e) + Math.min(e.body.length, MIN_BODY_CHARS) > budget) break;
@@ -176,6 +189,7 @@ async function readAt(dir: string, commit: string, ids: readonly string[]): Prom
   let at = 0;
   while (at < output.length) {
     const eol = output.indexOf(10, at);
+    if (eol === -1) break;
     const line = output.subarray(at, eol).toString();
     at = eol + 1;
     const size = Number(line.split(" ")[2]);

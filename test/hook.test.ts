@@ -6,8 +6,8 @@ import { loadConfig } from "../server/config.ts";
 import { CONTEXT_HEADER, contextText, flushReceipts, MAX_CONTEXT_CHARS } from "../server/hook.ts";
 import type { AgentSnapshot } from "../server/hosts.ts";
 import { createStore } from "../server/store.ts";
-import { type AgentMessage, type Message, MessageSchema } from "../shared/message.ts";
-import { bareRemote, cli, fakeHosts, PEOPLE, remoteFile, tempRoot, writeConfig } from "./helpers.ts";
+import { type AgentMessage, AgentMessageSchema, type Message, MessageSchema } from "../shared/message.ts";
+import { bareRemote, cli, fakeHosts, git, remoteFile, tempRoot, writeConfig } from "./helpers.ts";
 
 const { root, cleanup } = tempRoot("hook");
 const remote = bareRemote(root);
@@ -123,7 +123,7 @@ test("the receipts of one hook call land in one commit", async () => {
   const { text } = await hook(postToolUse);
   for (const id of ids) assert.ok(text?.includes(`[${id}]`));
   await flushB();
-  const log = remoteFile(remote, "inbox", "messages/" + ids[0] + ".json") && (await import("./helpers.ts")).git(root, "--git-dir", remote, "log", "-1", "--format=%s", "--name-only", "inbox");
+  const log = git(root, "--git-dir", remote, "log", "-1", "--format=%s", "--name-only", "inbox");
   assert.match(log, /^inbox: read 3 messages\n/);
   for (const id of ids) assert.ok(log.includes(`messages/${id}.json`));
 });
@@ -209,8 +209,8 @@ test("the context block stays under the cap: long bodies are cut, and what does 
 
 test("contextText shares the budget, keeping short bodies whole", async () => {
   const config = await loadConfig(configB);
-  const make = (n: number, body: string): Message =>
-    MessageSchema.parse({
+  const make = (n: number, body: string): AgentMessage =>
+    AgentMessageSchema.parse({
       version: 1,
       id: `20261017-120${n}-lead-abc${n}`,
       from: { kind: "agent", role: "lead", agentId: "lead-1", title: null, host: "host-a" },
@@ -226,7 +226,6 @@ test("contextText shares the budget, keeping short bodies whole", async () => {
   assert.equal(included.length, 2);
   assert.ok(text.includes("\nshort\n"));
   assert.ok(text.length <= MAX_CONTEXT_CHARS && text.length > MAX_CONTEXT_CHARS - 200, `${text.length}`);
-  assert.equal(PEOPLE.length, 2);
 });
 
 test("show prints a message in full with its thread", async () => {
