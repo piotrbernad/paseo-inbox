@@ -300,6 +300,10 @@ async function hook(io: Io): Promise<number> {
           ROLE_LOOKUP_MS,
         ),
       syncInBackground: io.syncInBackground ?? syncInBackground,
+      fastPath: {
+        dir: join(io.env.TMPDIR || "/tmp", `paseo-inbox-${process.getuid?.() ?? 0}`),
+        config: io.env.PASEO_INBOX_CONFIG || `${io.env.HOME}/.paseo/inbox.json`,
+      },
     });
     if (output !== null) io.out(output);
   } catch (error) {

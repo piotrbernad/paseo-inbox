@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { type Io, main } from "../server/cli/commands.ts";
 import type { AgentSnapshot, Connect, HostClient } from "../server/hosts.ts";
 
@@ -103,7 +103,7 @@ export async function cli(
   const out: string[] = [];
   const err: string[] = [];
   const code = await main(args, {
-    env: { PASEO_INBOX_CONFIG: configPath, ...env },
+    env: { PASEO_INBOX_CONFIG: configPath, TMPDIR: dirname(configPath), ...env },
     out: (line) => out.push(line),
     err: (line) => err.push(line),
     connect,

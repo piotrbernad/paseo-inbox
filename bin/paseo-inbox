@@ -10,6 +10,21 @@ while [ -L "$source" ]; do
 done
 root="$(cd -P "$(dirname "$source")/.." && pwd)"
 
+# The hook runs after every tool call. When the agent's fast-path file (written by the hook itself,
+# see server/hook.ts) says the store has not moved and no sync is due, answer without starting Node.
+# Only the start of stdin is read here: tool output can be large, and bash reads byte by byte.
+if [ "${1:-}" = hook ] && [ -n "${PASEO_AGENT_ID:-}" ]; then
+  IFS= read -r -d '' -n 2048 start || true
+  fast="${TMPDIR:-/tmp}/paseo-inbox-$UID/$PASEO_AGENT_ID"
+  if [[ $start =~ \"hook_event_name\"[[:space:]]*:[[:space:]]*\"PostToolUse\" ]] &&
+    { read -r config && read -r ref && read -r sha && read -r due; } 2>/dev/null <"$fast" &&
+    [ "$config" = "${PASEO_INBOX_CONFIG:-$HOME/.paseo/inbox.json}" ] &&
+    read -r current 2>/dev/null <"$ref" && [ "$current" = "$sha" ] &&
+    [ "$(date +%s)" -lt "$due" ]; then
+    exec cat >/dev/null
+  fi
+fi
+
 resources="${PASEO_RESOURCES:-}"
 if [ -z "$resources" ]; then
   for candidate in /Applications/Paseo.app/Contents/Resources "$HOME/Applications/Paseo.app/Contents/Resources"; do
@@ -22,7 +37,14 @@ if [ -z "$resources" ] || [ ! -e "$resources/app.asar" ]; then
 fi
 helper="$resources/../Frameworks/Paseo Helper.app/Contents/MacOS/Paseo Helper"
 
-exec env ELECTRON_RUN_AS_NODE=1 PASEO_NODE_ENV=production PASEO_RESOURCES="$resources" "$helper" \
-  --disable-warning=DEP0040 --disable-warning=ExperimentalWarning \
-  "$resources/app.asar.unpacked/dist/daemon/node-entrypoint-runner.js" \
-  node-script "$root/server/cli/main.ts" "$@"
+run() {
+  exec env ELECTRON_RUN_AS_NODE=1 PASEO_NODE_ENV=production PASEO_RESOURCES="$resources" "$helper" \
+    --disable-warning=DEP0040 --disable-warning=ExperimentalWarning \
+    "$resources/app.asar.unpacked/dist/daemon/node-entrypoint-runner.js" \
+    node-script "$root/server/cli/main.ts" "$@"
+}
+if [ "${start+set}" = set ]; then
+  { printf '%s' "$start"; exec cat; } | run "$@"
+else
+  run "$@"
+fi

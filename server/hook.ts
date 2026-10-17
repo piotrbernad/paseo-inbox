@@ -114,17 +114,32 @@ async function writeAtomic(path: string, text: string): Promise<void> {
   await rename(draft, path);
 }
 
-// HEAD without spawning git: the loose ref, then packed-refs.
-export async function readHead(dir: string): Promise<string | null> {
+// HEAD without spawning git: the loose ref, then packed-refs. `refFile` is the loose ref, when
+// there is one, for the launcher's fast path.
+export async function readHead(dir: string): Promise<{ sha: string; refFile: string | null } | null> {
   const gitDir = join(dir, ".git");
   const head = (await readFile(join(gitDir, "HEAD"), "utf8").catch(() => "")).trim();
-  if (!head.startsWith("ref: ")) return /^[0-9a-f]{40,64}$/.test(head) ? head : null;
+  if (!head.startsWith("ref: ")) return /^[0-9a-f]{40,64}$/.test(head) ? { sha: head, refFile: null } : null;
   const ref = head.slice("ref: ".length);
-  const loose = (await readFile(join(gitDir, ref), "utf8").catch(() => "")).trim();
-  if (loose) return loose;
+  const refFile = join(gitDir, ref);
+  const loose = (await readFile(refFile, "utf8").catch(() => "")).trim();
+  if (loose) return { sha: loose, refFile };
   const packed = await readFile(join(gitDir, "packed-refs"), "utf8").catch(() => "");
   const line = packed.split("\n").find((l) => l.endsWith(` ${ref}`));
-  return line ? line.split(" ")[0] : null;
+  return line ? { sha: line.split(" ")[0], refFile: null } : null;
+}
+
+// bin/paseo-inbox answers a PostToolUse hook without starting Node when this agent's file says
+// nothing changed and no sync is due. Its lines: the config path as the launcher spells it, the ref
+// file, the commit last read, and the second from which a sync is due.
+export type FastPath = { dir: string; config: string };
+
+async function writeFastPath(fast: FastPath | null, agentId: string, lines: string[] | null): Promise<void> {
+  if (!fast) return;
+  const file = join(fast.dir, agentId);
+  if (lines === null) return rm(file, { force: true });
+  await mkdir(fast.dir, { recursive: true, mode: 0o700 });
+  await writeAtomic(file, `${[fast.config, ...lines].join("\n")}\n`);
 }
 
 async function changedIds(dir: string, from: string | null, to: string, now: number): Promise<string[]> {
@@ -196,6 +211,7 @@ export type HookDeps = {
   lookupRole(agentId: string): Promise<string | null>;
   // Starts `paseo-inbox sync` without waiting for it.
   syncInBackground(): void;
+  fastPath: FastPath | null;
 };
 
 // Returns the hook's stdout, or null for no output. Throws only on bugs; the CLI swallows those.
@@ -208,15 +224,18 @@ export async function runHook(stdin: string, deps: HookDeps): Promise<string | n
   if (event.name === "UserPromptSubmit" && event.prompt?.startsWith(STUB_PREFIX)) {
     // Woken by a stub: the message may have been pushed from another host a moment ago.
     await store.sync({ waitMs: 20_000 });
-  } else {
-    const synced = await stat(syncStampPath(dir)).then((s) => s.mtimeMs, () => 0);
-    if (deps.now().getTime() - synced >= SYNC_EVERY_MS) deps.syncInBackground();
   }
+  let synced = await stat(syncStampPath(dir)).then((s) => s.mtimeMs, () => 0);
+  if (deps.now().getTime() - synced >= SYNC_EVERY_MS) {
+    deps.syncInBackground();
+    synced = 0;
+  }
+  const syncDue = Math.floor((synced + SYNC_EVERY_MS) / 1000);
 
   const agents = join(stateDir(dir), "agents");
   await mkdir(agents, { recursive: true });
   // Tool calls can run in parallel: one hook per agent at a time, the others find nothing new.
-  return withLock(join(agents, `${agentId}.lock`), () => deliverUnread(event, agentId, deps, join(agents, `${agentId}.json`)), {
+  return withLock(join(agents, `${agentId}.lock`), () => deliverUnread(event, agentId, deps, join(agents, `${agentId}.json`), syncDue), {
     waitMs: 3_000,
   }).catch((error) => {
     if (error instanceof LockBusy) return null;
@@ -224,15 +243,27 @@ export async function runHook(stdin: string, deps: HookDeps): Promise<string | n
   });
 }
 
-async function deliverUnread(event: HookEvent, agentId: string, deps: HookDeps, cursorPath: string): Promise<string | null> {
+async function deliverUnread(
+  event: HookEvent,
+  agentId: string,
+  deps: HookDeps,
+  cursorPath: string,
+  syncDue: number,
+): Promise<string | null> {
   const { config } = deps;
   const { dir } = config.store;
-  const head = await readHead(dir);
-  if (head === null) return null;
+  const current = await readHead(dir);
+  if (current === null) return null;
+  const head = current.sha;
+  const caughtUp = () =>
+    writeFastPath(deps.fastPath, agentId, current.refFile ? [current.refFile, head, String(syncDue)] : null);
   const raw = await readFile(cursorPath, "utf8").catch(() => null);
   const parsed = raw === null ? null : CursorSchema.safeParse(safeJson(raw));
   const cursor: Cursor = parsed?.success ? parsed.data : { head: null, role: null, roleAt: 0, injected: [] };
-  if (cursor.head === head) return null;
+  if (cursor.head === head) {
+    await caughtUp();
+    return null;
+  }
 
   const now = deps.now();
   let { role, roleAt } = cursor;
@@ -263,6 +294,8 @@ async function deliverUnread(event: HookEvent, agentId: string, deps: HookDeps, 
     injected: [...injected].filter((id) => id.slice(0, 8) >= since),
   };
   await writeAtomic(cursorPath, JSON.stringify(next));
+  if (next.head === head) await caughtUp();
+  else await writeFastPath(deps.fastPath, agentId, null);
   if (included.length === 0) return null;
   deps.syncInBackground();
   return JSON.stringify({ hookSpecificOutput: { hookEventName: event.name, additionalContext: text } });

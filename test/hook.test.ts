@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { loadConfig } from "../server/config.ts";
@@ -107,6 +107,16 @@ test("a running agent gets new messages after its next tool call, once, and they
   assert.deepEqual(readdirSync(join(dirB, ".git/paseo-inbox/receipts")), [], "receipts flushed");
 });
 
+test("a caught-up hook leaves the launcher a fast-path file; a deferred one removes it", async () => {
+  await hook(postToolUse);
+  const file = join(root, `paseo-inbox-${process.getuid?.() ?? 0}`, "designer-1");
+  const [config, ref, sha, due] = readFileSync(file, "utf8").trimEnd().split("\n");
+  assert.equal(config, configB);
+  assert.equal(ref, join(dirB, ".git/refs/heads/inbox"));
+  assert.equal(sha, readFileSync(ref, "utf8").trim());
+  assert.ok(Number(due) >= 20, due);
+});
+
 test("the receipts of one hook call land in one commit", async () => {
   const ids = [await send("designer", "one"), await send("designer", "two"), await send("designer", "three")];
   await cli(configB, asB, ["sync"]);
@@ -189,6 +199,7 @@ test("the context block stays under the cap: long bodies are cut, and what does 
   const got = many.filter((id) => first.text?.includes(`[${id}]`));
   assert.ok(got.length >= 1 && got.length < many.length, `${got.length} fit`);
   assert.match(first.text ?? "", new RegExp(`${many.length - got.length} more messages? will follow after your next tool call\\.$`));
+  assert.equal(existsSync(join(root, `paseo-inbox-${process.getuid?.() ?? 0}`, "designer-1")), false, "no fast path while messages wait");
   const second = await hook(postToolUse);
   const rest = many.filter((id) => second.text?.includes(`[${id}]`));
   assert.deepEqual([...got, ...rest].sort(), [...many].sort());
