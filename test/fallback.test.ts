@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { createFallback, OVERDUE_MS, overdue } from "../server/fallback.ts";
 import type { AgentStatus } from "../server/hosts.ts";
 import { type Message, MessageSchema } from "../shared/message.ts";
-import { PEOPLE } from "./helpers.ts";
 
 const NOW = Date.parse("2026-10-17T20:00:00Z");
 const minutesAgo = (m: number) => new Date(NOW - m * 60_000).toISOString();
@@ -63,20 +62,19 @@ test("overdue: unread actionable messages and answers for agents on this host, 1
     self: "host-b",
     now: NOW,
     nudged: new Set([nudgedBefore.id]),
-    people: PEOPLE,
   });
   assert.deepEqual([...result.keys()], ["designer-1"]);
-  assert.deepEqual(result.get("designer-1")?.map((w) => [w.message.id, w.from]), [[due.id, "lead"], [dueAnswer.id, "Alice"]]);
+  assert.deepEqual(result.get("designer-1")?.map((m) => m.id), [due.id, dueAnswer.id]);
   assert.equal(OVERDUE_MS, 600_000);
 });
 
-test("the fallback steers one stub per agent that is running or idle, once, and only on a hook host", async () => {
+test("the fallback steers the wake text once per agent that is running or idle, once, and only on a hook host", async () => {
   const steered: [string, string][] = [];
   const statuses: Record<string, AgentStatus | null> = { "designer-1": "running", "designer-2": "closed", "designer-3": "idle" };
   const messages = [message({ ref: "REF-7" }), message({ to: "designer-2" }), message({ to: "designer-3" }), message({ to: "designer-3" })];
   let hookHost = false;
   const fallback = createFallback({
-    state: async () => ({ messages, self: "host-b", hookHost, people: PEOPLE }),
+    state: async () => ({ messages, self: "host-b", hookHost, wakeText: "Read your inbox." }),
     status: async (id) => statuses[id] ?? null,
     steer: async (id, text) => {
       steered.push([id, text]);
@@ -88,8 +86,8 @@ test("the fallback steers one stub per agent that is running or idle, once, and 
   hookHost = true;
   await fallback.poll();
   assert.deepEqual(steered, [
-    ["designer-1", "Inbox: 1 new message from lead (REF-7)."],
-    ["designer-3", "Inbox: 2 new messages from lead."],
+    ["designer-1", "Read your inbox."],
+    ["designer-3", "Read your inbox."],
   ]);
   await fallback.poll();
   assert.equal(steered.length, 2, "each message is nudged about once");

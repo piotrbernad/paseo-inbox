@@ -25,10 +25,10 @@ export type SendInput = {
 
 // How a message reaches its recipient's session:
 // - "message": the whole message as a chat message (hosts without the hook, or nothing recorded
-//   for the hook to read);
-// - "stub": a one-line notice that wakes the idle recipient, whose hook then reads the message;
-// - "none": the hook delivers it at the recipient's next tool call or turn.
-export type DeliveryMode = "message" | "stub" | "none";
+//   for the recipient to read);
+// - "wake": config.wakeText wakes the idle recipient, which reads its inbox with `paseo-inbox read`;
+// - "none": the recipient's hook tells it at its next tool call or turn.
+export type DeliveryMode = "message" | "wake" | "none";
 
 export function deliveryMode(opts: {
   hookHost: boolean;
@@ -38,13 +38,7 @@ export function deliveryMode(opts: {
 }): DeliveryMode {
   if (!opts.hookHost || !opts.recorded) return "message";
   if (opts.status === "running" || opts.status === "initializing") return "none";
-  return opts.wake ? "stub" : "none";
-}
-
-export function stubText(from: readonly string[], ref: string | null): string {
-  const names = [...new Set(from)].join(", ");
-  const count = from.length === 1 ? "1 new message" : `${from.length} new messages`;
-  return `Inbox: ${count} from ${names}${ref ? ` (${ref})` : ""}.`;
+  return opts.wake ? "wake" : "none";
 }
 
 export type Sent = {
@@ -107,8 +101,7 @@ export async function resolveRecipient(directory: Directory, to: Recipient): Pro
 
 type Deps = { config: Config; directory: Directory; store: Store | null; now?: () => Date };
 
-// On a hook host the message is recorded first, because the recipient's hook reads it from the
-// store. Elsewhere it is delivered first and recorded after, so a message in the store reached
+// On a hook host the message is recorded first, because the recipient reads it from the store. Elsewhere it is delivered first and recorded after, so a message in the store reached
 // its recipient's chat. `store: null` delivers without recording.
 export async function send(deps: Deps, input: SendInput): Promise<Sent> {
   const now = deps.now?.() ?? new Date();
@@ -151,15 +144,16 @@ export async function send(deps: Deps, input: SendInput): Promise<Sent> {
   }
   const written = await deps.store.create(message(null), "send");
   if (written.kind === "refused") {
-    // The hook cannot read what is not in the store: hand the whole message over instead.
+    // The recipient cannot read what is not in the store: hand the whole message over instead.
     await whole();
     return { id, to, mode: "message", recorded: false, recordError: written.reason };
   }
-  if (mode === "stub") await deps.directory.steer(located, stubText([partyName(input.from, deps.config.people)], input.ref));
+  if (mode === "wake") await deps.directory.steer(located, deps.config.wakeText);
   return { id, to, mode, recorded: true, recordError: null };
 }
 
-// An answer is already in the store (in its question), so a hook host reads it like a message.
+// An answer is already in the store (in its question), so an agent on a hook host reads it like a
+// message.
 export async function deliverAnswer(
   deps: { config: Config; directory: Directory },
   question: AnsweredQuestion,
@@ -168,7 +162,6 @@ export async function deliverAnswer(
     throw new Error("The question was asked by a person, so there is no agent to deliver the answer to.");
   }
   const located = await resolveRecipient(deps.directory, { kind: "party", party: question.from });
-  const from: Party = { kind: "person", person: question.question.state.by };
   const mode = deliveryMode({
     hookHost: deps.config.hookHosts.includes(located.host),
     recorded: true,
@@ -176,11 +169,12 @@ export async function deliverAnswer(
     wake: true,
   });
   if (mode === "message") {
+    const from: Party = { kind: "person", person: question.question.state.by };
     const to = deps.directory.party(located);
     const text = `${header({ id: null, from, to, ref: question.ref, inReplyTo: question.id }, deps.config)}\n\n${answerText(question)}`;
     await deps.directory.steer(located, text);
-  } else if (mode === "stub") {
-    await deps.directory.steer(located, stubText([partyName(from, deps.config.people)], question.ref));
+  } else if (mode === "wake") {
+    await deps.directory.steer(located, deps.config.wakeText);
   }
   return { mode, reader: located.agent };
 }

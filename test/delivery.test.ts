@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { loadConfig } from "../server/config.ts";
 import { createDirectory, type AgentSnapshot } from "../server/hosts.ts";
 import { createInbox } from "../server/inbox.ts";
-import { deliverAnswer, deliveryMode, stubText } from "../server/send.ts";
+import { DEFAULT_WAKE_TEXT, loadConfig } from "../server/config.ts";
+import { deliverAnswer, deliveryMode } from "../server/send.ts";
 import { createStore } from "../server/store.ts";
 import { type Message, MessageSchema } from "../shared/message.ts";
 import { bareRemote, cli, fakeHosts, remoteFile, tempRoot, writeConfig } from "./helpers.ts";
@@ -18,17 +18,15 @@ test("delivery decision table", () => {
     [true, true, "running", true, "none"],
     [true, true, "running", false, "none"],
     [true, true, "initializing", true, "none"],
-    [true, true, "idle", true, "stub"],
+    [true, true, "idle", true, "wake"],
     [true, true, "idle", false, "none"],
-    [true, true, "error", true, "stub"],
+    [true, true, "error", true, "wake"],
     [true, true, "closed", false, "none"],
-    [true, true, null, true, "stub"],
+    [true, true, null, true, "wake"],
   ];
   for (const [hookHost, recorded, status, wake, mode] of cases) {
     assert.equal(deliveryMode({ hookHost, recorded, status: status ?? null, wake }), mode, JSON.stringify({ hookHost, recorded, status, wake }));
   }
-  assert.equal(stubText(["lead"], "REF-12"), "Inbox: 1 new message from lead (REF-12).");
-  assert.equal(stubText(["lead", "designer", "lead"], null), "Inbox: 3 new messages from lead, designer.");
 });
 
 const { root, cleanup } = tempRoot("delivery");
@@ -58,11 +56,11 @@ before(async () => {
 });
 after(cleanup);
 
-test("hook host, idle recipient: the message is recorded unread, then a stub without the body wakes it", async () => {
+test("hook host, idle recipient: the message is recorded unread, then the wake text, not the body, wakes it", async () => {
   designer.status = "idle";
   const sent = await sendAs({ PASEO_AGENT_ID: "lead-1" }, "--from", "lead", "designer", "--ref", "REF-3", "Secret body");
-  assert.equal(sent.out, `sent ${sent.id} to Designer (woke it with a notice)`);
-  assert.deepEqual(sent.steered.map((s) => [s.agentId, s.text]), [["designer-1", "Inbox: 1 new message from Lead (REF-3)."]]);
+  assert.equal(sent.out, `sent ${sent.id} to Designer (woke it to read its inbox)`);
+  assert.deepEqual(sent.steered.map((s) => [s.agentId, s.text]), [["designer-1", DEFAULT_WAKE_TEXT]]);
   const message = stored(sent.id as string);
   assert.ok(message.question === null);
   assert.equal(message.read, null);
@@ -72,7 +70,7 @@ test("hook host, idle recipient: the message is recorded unread, then a stub wit
 test("hook host, running recipient: recorded, nothing sent to its chat", async () => {
   designer.status = "running";
   const sent = await sendAs({ PASEO_AGENT_ID: "lead-1" }, "--from", "lead", "designer", "While you work");
-  assert.equal(sent.out, `sent ${sent.id} to Designer (it reads it at its next tool call or turn)`);
+  assert.equal(sent.out, `sent ${sent.id} to Designer (its hook tells it at its next tool call or turn)`);
   assert.deepEqual(sent.steered, []);
   const message = stored(sent.id as string);
   assert.equal(message.question === null && message.read, null);
@@ -97,7 +95,7 @@ test("a host without the hook gets the whole message, recorded as read on delive
   assert.equal(message.question === null && message.read?.agentId, "lead-1");
 });
 
-test("answers use the same modes: whole text off hook hosts, a stub to an idle asker on one", async () => {
+test("answers use the same modes: whole text off hook hosts, the wake text to an idle asker on one", async () => {
   const config = await loadConfig(configA);
   const directory = createDirectory(config, asA);
   const store = createStore(config.store);
@@ -120,7 +118,7 @@ test("answers use the same modes: whole text off hook hosts, a stub to an idle a
   let before = hosts.steered.length;
   const answered = await inbox.answer({ id: toDesigner, choice: null, text: "Yes", by: "alice" });
   assert.equal(answered.kind, "ok");
-  assert.deepEqual(hosts.steered.slice(before).map((s) => s.text), ["Inbox: 1 new message from Alice (REF-9)."]);
+  assert.deepEqual(hosts.steered.slice(before).map((s) => s.text), [DEFAULT_WAKE_TEXT]);
   const state = stored(toDesigner).question?.state;
   assert.ok(state?.kind === "answered" && state.delivery.kind === "delivered");
   assert.equal(state.read, null, "the hook has not read it yet");
@@ -132,4 +130,14 @@ test("answers use the same modes: whole text off hook hosts, a stub to an idle a
   assert.match(hosts.steered[before]?.text ?? "", /^\[inbox\] from Alice to Lead \(REF-9, re \S+\)\n.*\n\nAnswer to question/);
   const leadState = stored(toLead).question?.state;
   assert.equal(leadState?.kind === "answered" && leadState.read?.agentId, "lead-1");
+});
+
+test("the wake text comes from the config", async () => {
+  const custom = writeConfig(root, "host-a", remote, dirA, { hookHosts: ["host-b"], wakeText: "Masz nowe wiadomości. Przeczytaj: paseo-inbox read" }, "inbox-host-a-wake");
+  designer.status = "idle";
+  const before = hosts.steered.length;
+  const result = await cli(custom, asA, ["send", "--from", "lead", "designer", "Hej"], { PASEO_AGENT_ID: "lead-1" });
+  assert.equal(result.code, 0, result.err);
+  assert.deepEqual(hosts.steered.slice(before).map((s) => s.text), ["Masz nowe wiadomości. Przeczytaj: paseo-inbox read"]);
+  assert.equal(DEFAULT_WAKE_TEXT, "New messages in your inbox. Read them: paseo-inbox read");
 });

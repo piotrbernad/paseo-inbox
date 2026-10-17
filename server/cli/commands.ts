@@ -133,7 +133,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
       },
     );
     const label = partyName(sent.to, ctx.config.people);
-    const how = { message: "", stub: " (woke it with a notice)", none: " (it reads it at its next tool call or turn)" }[sent.mode];
+    const how = { message: "", wake: " (woke it to read its inbox)", none: " (its hook tells it at its next tool call or turn)" }[sent.mode];
     ctx.io.out(sent.recorded ? `sent ${sent.id} to ${label}${how}` : `sent to ${label} (not recorded)`);
     if (sent.recordError) ctx.io.err(`paseo-inbox: delivered, but not recorded in the store: ${sent.recordError}`);
     return 0;

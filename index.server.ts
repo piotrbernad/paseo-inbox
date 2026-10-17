@@ -77,7 +77,7 @@ export default function contribute(server: PluginServerContext) {
     async state() {
       const { config, inbox } = await current();
       const { messages } = await inbox.list();
-      return { messages, self: config.self, hookHost: config.hookHosts.includes(config.self), people: config.people };
+      return { messages, self: config.self, hookHost: config.hookHosts.includes(config.self), wakeText: config.wakeText };
     },
     async status(agentId) {
       const { config } = await current();
