@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // The Paseo desktop app bundles Node and the CLI's connection code. Using them means users install
@@ -23,8 +23,4 @@ export function paseoResources(): string {
 
 export function bundledModule(resources: string, path: string): string {
   return pathToFileURL(join(resources, "app.asar/node_modules", path)).href;
-}
-
-export function helperExecutable(resources: string): string {
-  return join(dirname(resources), "Frameworks/Paseo Helper.app/Contents/MacOS/Paseo Helper");
 }

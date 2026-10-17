@@ -10,7 +10,6 @@ import type { AnswerInput, ListOutput, Result } from "../shared/rpc.ts";
 import { answer, isAnswered, recordDelivery } from "./questions.ts";
 import { errorText, type Store } from "./store.ts";
 
-// Sends the answer of a question to the agent that asked it.
 export type Deliver = (question: AnsweredQuestion) => Promise<void>;
 
 export type Inbox = ReturnType<typeof createInbox>;

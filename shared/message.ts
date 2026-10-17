@@ -81,10 +81,6 @@ export type Message = z.infer<typeof MessageSchema>;
 export type QuestionMessage = Extract<Message, { question: Question }>;
 export type AnsweredQuestion = QuestionMessage & { question: Question & { state: Answered } };
 
-export function isQuestion(message: Message): message is QuestionMessage {
-  return message.question !== null;
-}
-
 export function isOpenQuestion(message: Message): message is QuestionMessage {
   return message.question !== null && message.question.state.kind === "open";
 }
@@ -100,7 +96,6 @@ export function partyLabel(party: Party, people: readonly Person[]): string {
   return `${name} · ${party.host}`;
 }
 
-// The short name used inside sentences ("Question from lead: …").
 export function partyName(party: Party, people: readonly Person[]): string {
   if (party.kind === "person") return people.find((p) => p.id === party.person)?.name ?? party.person;
   return party.role ?? party.title ?? party.agentId?.slice(0, 8) ?? "an agent";

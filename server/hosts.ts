@@ -64,7 +64,6 @@ export function createDirectory(config: Config, connect: Connect) {
     return found && !found.agent.archivedAt ? found.agent : null;
   }
 
-  // This host first, then the others in config order.
   function hostOrder(prefer?: string): string[] {
     const keys = Object.keys(config.hosts);
     const first = prefer && keys.includes(prefer) ? prefer : config.self;

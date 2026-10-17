@@ -10,7 +10,6 @@ const PULL_EVERY_MS = 15_000;
 const DIR = "messages";
 
 export type Write = { kind: "ok"; message: Message } | { kind: "refused"; reason: string };
-// Returns the next version of the message, or a refusal shown to the caller.
 export type Mutation = (current: Message) => Message | string;
 
 export type Store = ReturnType<typeof createStore>;
@@ -126,8 +125,6 @@ export function createStore(opts: { dir: string; branch: string; repo: string })
   return {
     dir,
 
-    // Clones the store branch, or creates it on the remote as an orphan branch when it is missing.
-    // Safe to run again on an existing checkout.
     init(): Promise<"existing" | "cloned" | "created"> {
       return serial(async () => {
         if (existsSync(join(dir, ".git"))) return "existing";
@@ -169,7 +166,6 @@ export function createStore(opts: { dir: string; branch: string; repo: string })
       });
     },
 
-    // Pulls first so the caller sees the newest state of one message.
     read(id: string): Promise<Message | null | string> {
       return serial(async () => {
         try {
@@ -205,7 +201,6 @@ export function createStore(opts: { dir: string; branch: string; repo: string })
       });
     },
 
-    // Adds every message whose file does not exist yet, in one commit. Returns the ids it added.
     addMissing(messages: Message[], verb: string): Promise<string[] | string> {
       return serial(async () => {
         const result = await commit(verb, async () => {

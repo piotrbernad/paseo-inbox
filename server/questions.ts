@@ -1,7 +1,5 @@
 import type { AnsweredQuestion, Delivery, Message, Person, QuestionMessage } from "../shared/message.ts";
 
-// Pure transitions of a question's state. Each returns the next message or a refusal.
-
 export function answer(
   current: Message,
   input: { choice: string | null; text: string; by: string },

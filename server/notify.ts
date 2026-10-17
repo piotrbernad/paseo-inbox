@@ -32,7 +32,6 @@ export interface NotifierPaseo {
 }
 
 export interface NotifierDeps {
-  // The current messages, the person on this host and the people for display names.
   inbox(): Promise<{ me: string | null; people: readonly Person[]; messages: Message[]; cwd: string } | null>;
   enabled(): Promise<boolean>;
   // Null until the daemon hands the plugin an SDK connection through a hook or RPC.
