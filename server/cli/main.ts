@@ -13,8 +13,11 @@ registerHooks({
 });
 
 const { main } = await import("./commands.ts");
-process.exitCode = await main(process.argv.slice(2), {
+const argv = process.argv.slice(2);
+process.exitCode = await main(argv, {
   env: process.env,
   out: (line) => process.stdout.write(`${line}\n`),
   err: (line) => process.stderr.write(`${line}\n`),
 });
+// The agent waits for its hook to exit: do not wait for a daemon connection that timed out.
+if (argv[0] === "hook") process.stdout.write("", () => process.exit(0));

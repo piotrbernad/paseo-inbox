@@ -246,6 +246,22 @@ export function createStore(opts: { dir: string; branch: string; repo: string })
       });
     },
 
+    // One commit for every message `mutate` changes; null leaves a message as it is.
+    updateMany(ids: string[], verb: string, mutate: (current: Message) => Message | null): Promise<string[] | string> {
+      return serial(async () => {
+        const result = await commit(verb, async () => {
+          const files = [];
+          for (const id of ids.filter((i) => MESSAGE_ID.test(i))) {
+            const current = await readOne(id);
+            const next = current && mutate(current);
+            if (next) files.push({ id, message: MessageSchema.parse(next) });
+          }
+          return { files };
+        });
+        return typeof result === "string" ? result : result.files.map((f) => f.id);
+      });
+    },
+
     addMissing(messages: Message[], verb: string): Promise<string[] | string> {
       return serial(async () => {
         const result = await commit(verb, async () => {

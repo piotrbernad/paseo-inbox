@@ -1,4 +1,7 @@
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
   isOpenQuestion,
@@ -12,9 +15,10 @@ import {
 } from "../../shared/message.ts";
 import { type Config, configPath, loadConfig } from "../config.ts";
 import { type Connect, createDirectory, type Directory, paseoConnect } from "../hosts.ts";
+import { flushReceipts, runHook } from "../hook.ts";
 import { readLegacyQuestions } from "../legacy.ts";
 import { formatWhen, withdraw } from "../questions.ts";
-import { newMessageId, type Recipient, send } from "../send.ts";
+import { newMessageId, type Recipient, send, tags } from "../send.ts";
 import { createStore, type Store } from "../store.ts";
 
 export type Io = {
@@ -23,6 +27,8 @@ export type Io = {
   err(line: string): void;
   connect?: Connect;
   now?: () => Date;
+  stdin?: () => Promise<string>;
+  syncInBackground?: () => void;
 };
 
 class UsageError extends Error {}
@@ -41,10 +47,18 @@ const HELP = `paseo-inbox: messages and questions between Paseo agents and their
   paseo-inbox list [--all] [--for PARTY]
       Open questions; --all adds everything from the last 7 days.
       PARTY is person:ID, role:ROLE, agent:AGENT_ID, or a bare person id or role.
+  paseo-inbox show ID
+      Print a message in full, with the messages it replies to and the replies to it.
   paseo-inbox withdraw ID [reason]
       Withdraw an open question.
   paseo-inbox import-questions DIR
       Import questions/<id>.json files of the earlier format. Safe to run again.
+  paseo-inbox hook
+      Agent hook (UserPromptSubmit, PostToolUse): adds unread messages to the agent's context.
+  paseo-inbox install-hooks [--claude] [--codex] [--claude-settings PATH] [--codex-home PATH] [--uninstall]
+      Add the hook to Claude Code and Codex settings (both when neither flag is given).
+  paseo-inbox sync
+      Commit the read receipts hooks left and fetch the store. Hooks start it in the background.
 
 Config: ~/.paseo/inbox.json, or the path in PASEO_INBOX_CONFIG.
 Inside a Paseo agent, PASEO_AGENT_ID identifies the sender; --from names its role.`;
@@ -56,6 +70,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       io.out(HELP);
       return 0;
     }
+    if (command === "hook") return await hook(io);
     const handler = COMMANDS[command];
     if (!handler) throw new UsageError(`Unknown command: ${command}`);
     const config = await loadConfig(configPath(io.env.PASEO_INBOX_CONFIG));
@@ -181,6 +196,28 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     return 0;
   },
 
+  async show(args, { config, store, io }) {
+    const { positionals } = parse(args, {});
+    const [id] = positionals;
+    if (!id || positionals.length > 1) throw new UsageError("show needs one message id.");
+    const found = await store.read(id);
+    if (typeof found === "string") io.err(`paseo-inbox: showing local data, ${found}`);
+    const { messages } = await store.list();
+    const message = messages.find((m) => m.id === id);
+    if (!message) throw new Error(`No message ${id}.`);
+    const thread = threadOf(message, messages);
+    io.out(thread.map((m) => describe(m, config.people, m.id === id)).join("\n\n"));
+    return 0;
+  },
+
+  async sync(args, { config, store, io }) {
+    parse(args, {});
+    const error = await flushReceipts(store, config.store.dir);
+    if (error) throw new Error(error);
+    io.out(`store synced: ${config.store.dir}`);
+    return 0;
+  },
+
   async withdraw(args, { config, store, io, now }) {
     const { positionals } = parse(args, {});
     const [id, ...reason] = positionals;
@@ -205,6 +242,98 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     return 0;
   },
 };
+
+// A hook must never break its agent: every failure ends in exit 0 and no output.
+async function hook(io: Io): Promise<number> {
+  try {
+    const input = await (io.stdin ?? readStdin)();
+    const config = await loadConfig(configPath(io.env.PASEO_INBOX_CONFIG));
+    const directory = createDirectory(config, io.connect ?? paseoConnect());
+    const output = await runHook(input, {
+      config,
+      store: createStore(config.store),
+      agentId: io.env.PASEO_AGENT_ID?.trim(),
+      now: () => io.now?.() ?? new Date(),
+      lookupRole: (agentId) =>
+        withTimeout(
+          directory.self(agentId).then((found) => found?.agent.labels?.[config.roleLabel] ?? null),
+          ROLE_LOOKUP_MS,
+        ),
+      syncInBackground: io.syncInBackground ?? syncInBackground,
+    });
+    if (output !== null) io.out(output);
+  } catch (error) {
+    if (io.env.PASEO_INBOX_DEBUG) io.err(`paseo-inbox hook: ${error instanceof Error ? error.stack : String(error)}`);
+  }
+  return 0;
+}
+
+const ROLE_LOOKUP_MS = 3_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+    timer.unref();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) return "";
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+export const LAUNCHER = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/paseo-inbox");
+
+function syncInBackground(): void {
+  spawn(LAUNCHER, ["sync"], { detached: true, stdio: "ignore" }).unref();
+}
+
+function threadOf(message: Message, messages: readonly Message[]): Message[] {
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const thread = new Map<string, Message>([[message.id, message]]);
+  for (let up = message.inReplyTo ? byId.get(message.inReplyTo) : undefined; up && !thread.has(up.id); ) {
+    thread.set(up.id, up);
+    up = up.inReplyTo ? byId.get(up.inReplyTo) : undefined;
+  }
+  const queue = [message.id];
+  while (queue.length > 0) {
+    const parent = queue.shift();
+    for (const reply of messages.filter((m) => m.inReplyTo === parent && !thread.has(m.id))) {
+      thread.set(reply.id, reply);
+      queue.push(reply.id);
+    }
+  }
+  return [...thread.values()].sort((a, b) => a.sentAt.localeCompare(b.sentAt));
+}
+
+function describe(m: Message, people: readonly Person[], focus: boolean): string {
+  const lines = [
+    `${focus ? ">> " : ""}[${m.id}] from ${partyLabel(m.from, people)} to ${partyLabel(m.to, people)}${tags(m.ref, m.inReplyTo)}, ${formatWhen(m.sentAt)}`,
+  ];
+  if (m.question) {
+    const { question } = m;
+    lines.push(`Question: ${question.title}`);
+    for (const o of question.options) {
+      lines.push(`  ${o.key}: ${o.text}${question.recommendation === o.key ? " (recommended)" : ""}`);
+    }
+  }
+  if (m.body !== "") lines.push(m.body);
+  const state = m.question?.state;
+  if (state?.kind === "open") lines.push("Open.");
+  if (state?.kind === "withdrawn") lines.push(`Withdrawn ${formatWhen(state.at)}${state.reason ? `: ${state.reason}` : ""}.`);
+  if (state?.kind === "answered") {
+    lines.push(`Answered by ${partyLabel({ kind: "person", person: state.by }, people)} ${formatWhen(state.at)}:`);
+    if (state.choice !== null) lines.push(`  Choice: ${state.choice}`);
+    if (state.text !== "") lines.push(`  ${state.text}`);
+  }
+  const read = m.question === null ? m.read : state?.kind === "answered" ? state.read : null;
+  if (read) lines.push(`Read ${formatWhen(read.at)} by agent ${read.agentId}.`);
+  return lines.join("\n");
+}
 
 function parse<const O extends ParseArgsOptionsConfig>(args: string[], options: O) {
   try {

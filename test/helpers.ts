@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { main } from "../server/cli/commands.ts";
+import { type Io, main } from "../server/cli/commands.ts";
 import type { AgentSnapshot, Connect, HostClient } from "../server/hosts.ts";
 
 for (const key of ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"]) process.env[key] = "Test";
@@ -90,7 +90,7 @@ export function fakeHosts(agents: Record<"host-a" | "host-b", AgentSnapshot[]>) 
       return client;
     };
   }
-  return { connectAs, steered, down };
+  return { connectAs, steered, down, agents };
 }
 
 export async function cli(
@@ -98,6 +98,7 @@ export async function cli(
   connect: Connect,
   args: string[],
   env: Record<string, string> = {},
+  io: Partial<Io> = {},
 ): Promise<{ code: number; out: string; err: string }> {
   const out: string[] = [];
   const err: string[] = [];
@@ -106,6 +107,7 @@ export async function cli(
     out: (line) => out.push(line),
     err: (line) => err.push(line),
     connect,
+    ...io,
   });
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
