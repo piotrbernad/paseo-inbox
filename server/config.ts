@@ -12,6 +12,9 @@ export const ConfigSchema = z
     hosts: z.record(z.string(), z.string().min(1)),
     people: z.array(PersonSchema).default([]),
     roleLabel: z.string().min(1).default("team-role"),
+    // Hosts whose agents run `paseo-inbox hook`: messages reach them through the hook, and only an
+    // idle recipient gets a short wake-up notice. Other hosts get the whole message in the chat.
+    hookHosts: z.array(z.string().min(1)).default([]),
     store: z.object({
       repo: z.string().min(1),
       branch: z.string().min(1).default("inbox"),
@@ -19,6 +22,10 @@ export const ConfigSchema = z
     }),
   })
   .refine((c) => c.self in c.hosts, { message: "self must be one of the keys in hosts", path: ["self"] })
+  .refine((c) => c.hookHosts.every((h) => h in c.hosts), {
+    message: "every hookHosts entry must be one of the keys in hosts",
+    path: ["hookHosts"],
+  })
   .refine((c) => new Set(c.people.map((p) => p.id)).size === c.people.length, {
     message: "people ids must be unique",
     path: ["people"],

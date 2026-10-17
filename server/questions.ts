@@ -20,7 +20,15 @@ export function answer(
     ...current,
     question: {
       ...current.question,
-      state: { kind: "answered", choice: input.choice, text, by: input.by, at: now, delivery: { kind: "pending" } },
+      state: {
+        kind: "answered",
+        choice: input.choice,
+        text,
+        by: input.by,
+        at: now,
+        delivery: { kind: "pending" },
+        read: null,
+      },
     },
   };
 }

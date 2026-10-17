@@ -79,6 +79,8 @@ export async function send(
     sentAt: now.toISOString(),
     body: input.body,
     question: null,
+    wake: true,
+    read: { at: now.toISOString(), agentId: to.agentId ?? to.role ?? "unknown" },
   };
   const written = await deps.store.create(message, "send");
   return written.kind === "ok"

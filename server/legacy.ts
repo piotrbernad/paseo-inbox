@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { MESSAGE_ID, type Message, QuestionStateSchema } from "../shared/message.ts";
+import { MESSAGE_ID, type Message, MessageSchema } from "../shared/message.ts";
 
 // The earlier one-file-per-question format ("questions/<id>.json"), imported once into messages.
 const LegacyQuestionSchema = z.object({
@@ -16,12 +16,13 @@ const LegacyQuestionSchema = z.object({
   options: z.array(z.object({ key: z.string().min(1), text: z.string() })),
   recommendation: z.string().nullable(),
   askedAt: z.iso.datetime(),
-  state: QuestionStateSchema,
+  // Checked by MessageSchema, which also gives answers of this era their receipts.
+  state: z.unknown(),
 });
 type LegacyQuestion = z.infer<typeof LegacyQuestionSchema>;
 
-export function fromLegacy(q: LegacyQuestion): Message {
-  return {
+export function fromLegacy(q: LegacyQuestion): Message | null {
+  const parsed = MessageSchema.safeParse({
     version: 1,
     id: q.id,
     from: { kind: "agent", role: q.from, agentId: null, title: null, host: q.fromHost },
@@ -31,7 +32,8 @@ export function fromLegacy(q: LegacyQuestion): Message {
     sentAt: q.askedAt,
     body: q.context,
     question: { title: q.title, options: q.options, recommendation: q.recommendation, state: q.state },
-  };
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 export async function readLegacyQuestions(dir: string): Promise<{ messages: Message[]; invalid: string[] }> {
@@ -46,7 +48,8 @@ export async function readLegacyQuestions(dir: string): Promise<{ messages: Mess
     } catch {
       parsed = null;
     }
-    if (parsed?.success && `${parsed.data.id}.json` === name) messages.push(fromLegacy(parsed.data));
+    const message = parsed?.success && `${parsed.data.id}.json` === name ? fromLegacy(parsed.data) : null;
+    if (message) messages.push(message);
     else invalid.push(name);
   }
   return { messages, invalid };

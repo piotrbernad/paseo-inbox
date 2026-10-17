@@ -80,6 +80,26 @@ test("the schema keeps questions for people and plain messages for agents", () =
   assert.equal(MessageSchema.safeParse(message({ from: { ...loose, agentId: null } } as Partial<Message>)).success, false);
 });
 
+test("files written before receipts existed parse as already read when they reached the chat", () => {
+  const old = MessageSchema.parse(message());
+  assert.ok(old.question === null);
+  assert.equal(old.wake, true);
+  assert.deepEqual(old.read, { at: "2026-10-17T12:00:00Z", agentId: "loose-1" }, "sent whole into the chat");
+
+  const answeredAt = { kind: "answered", choice: null, text: "ok", by: "alice", at: "2026-10-17T12:05:00Z" };
+  const pending = MessageSchema.parse(question({ ...answeredAt, delivery: { kind: "pending" } }));
+  assert.equal(pending.question?.state.kind === "answered" && pending.question.state.read, null, "never reached the asker");
+  const delivered = MessageSchema.parse(question({ ...answeredAt, delivery: { kind: "delivered", at: "2026-10-17T12:06:00Z" } }));
+  assert.deepEqual(delivered.question?.state.kind === "answered" && delivered.question.state.read, {
+    at: "2026-10-17T12:06:00Z",
+    agentId: "lead-1",
+  });
+
+  const fyi = MessageSchema.parse({ ...message(), wake: false, read: null });
+  assert.deepEqual(fyi.question === null && [fyi.wake, fyi.read], [false, null]);
+  assert.equal(MessageSchema.safeParse({ ...message(), read: { at: "yesterday", agentId: "loose-1" } }).success, false);
+});
+
 test("party entries list people first, then everyone in the messages, with display labels", () => {
   assert.deepEqual(partyEntries([message()], PEOPLE), [
     { key: "person:alice", label: "Alice" },
@@ -110,6 +130,9 @@ test("config: me is the person on this host; ~ expands; mistakes are reported by
   await assert.rejects(loadConfig(path), /people: people ids must be unique/);
   writeFileSync(path, JSON.stringify({ ...config, people: [] }));
   assert.equal(me(await loadConfig(path)), null);
+  assert.deepEqual(loaded.hookHosts, []);
+  writeFileSync(path, JSON.stringify({ ...config, hookHosts: ["host-c"] }));
+  await assert.rejects(loadConfig(path), /hookHosts: every hookHosts entry must be one of the keys in hosts/);
 });
 
 test("watch toggles: empty means everyone, toggling off from everyone keeps the rest", () => {

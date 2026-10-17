@@ -35,6 +35,11 @@ export const DeliverySchema = z.discriminatedUnion("kind", [
 ]);
 export type Delivery = z.infer<typeof DeliverySchema>;
 
+// The recipient agent's read receipt, written when a hook put the message into its context.
+export const ReadSchema = z.object({ at: Iso, agentId: z.string().min(1) });
+export type Read = z.infer<typeof ReadSchema>;
+
+
 export const AnsweredSchema = z.object({
   kind: z.literal("answered"),
   choice: z.string().nullable(),
@@ -42,6 +47,8 @@ export const AnsweredSchema = z.object({
   by: z.string().min(1),
   at: Iso,
   delivery: DeliverySchema,
+  // The asking agent's receipt for the answer.
+  read: ReadSchema.nullable(),
 });
 export type Answered = z.infer<typeof AnsweredSchema>;
 
@@ -60,26 +67,61 @@ export const QuestionSchema = z.object({
 });
 export type Question = z.infer<typeof QuestionSchema>;
 
-function envelope<To extends z.ZodType, Q extends z.ZodType>(to: To, question: Q) {
-  return z.object({
-    version: z.literal(1),
-    id: z.string().regex(MESSAGE_ID),
-    from: PartySchema,
-    to,
-    ref: z.string().nullable(),
-    inReplyTo: z.string().nullable(),
-    sentAt: Iso,
-    body: z.string(),
-    question,
-  });
-}
+const envelope = {
+  version: z.literal(1),
+  id: z.string().regex(MESSAGE_ID),
+  from: PartySchema,
+  ref: z.string().nullable(),
+  inReplyTo: z.string().nullable(),
+  sentAt: Iso,
+  body: z.string(),
+};
+
+// `read` is set once the message is in its recipient's context: put there by the hook, or sent
+// whole into its chat.
+export const AgentMessageSchema = z.object({
+  ...envelope,
+  to: AgentPartySchema,
+  question: z.null(),
+  // false (`send --fyi`): never wake an idle recipient; it reads the message at its next turn.
+  wake: z.boolean().default(true),
+  read: ReadSchema.nullable(),
+});
+export type AgentMessage = z.infer<typeof AgentMessageSchema>;
+
+export const QuestionMessageSchema = z.object({ ...envelope, to: PersonPartySchema, question: QuestionSchema });
 
 // A question is exactly a message addressed to a person; agents never receive one and people
 // never receive anything else.
-export const MessageSchema = z.union([envelope(AgentPartySchema, z.null()), envelope(PersonPartySchema, QuestionSchema)]);
+export const MessageSchema = z.preprocess(
+  withLegacyReceipts,
+  z.union([AgentMessageSchema, QuestionMessageSchema]),
+);
 export type Message = z.infer<typeof MessageSchema>;
 export type QuestionMessage = Extract<Message, { question: Question }>;
 export type AnsweredQuestion = QuestionMessage & { question: Question & { state: Answered } };
+
+// Files written before receipts existed have none. Back then every message, and every delivered
+// answer, went whole into the recipient's chat, so those count as read at delivery.
+function withLegacyReceipts(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  const agentOf = (party: unknown) =>
+    isRecord(party) ? String(party.agentId ?? party.role ?? "unknown") : "unknown";
+  if (raw.question === null && !("read" in raw)) {
+    return { ...raw, read: { at: raw.sentAt, agentId: agentOf(raw.to) } };
+  }
+  const question = raw.question;
+  if (!isRecord(question) || !isRecord(question.state)) return raw;
+  const { state } = question;
+  if (state.kind !== "answered" || "read" in state) return raw;
+  const delivery = isRecord(state.delivery) ? state.delivery : {};
+  const read = delivery.kind === "delivered" ? { at: delivery.at, agentId: agentOf(raw.from) } : null;
+  return { ...raw, question: { ...question, state: { ...state, read } } };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export function isOpenQuestion(message: Message): message is QuestionMessage {
   return message.question !== null && message.question.state.kind === "open";
