@@ -7,6 +7,7 @@ import {
   isWatched,
   type Message,
   MessageSchema,
+  nextWatched,
   partyEntries,
   partyKey,
   RECENT_MS,
@@ -109,4 +110,12 @@ test("config: me is the person on this host; ~ expands; mistakes are reported by
   await assert.rejects(loadConfig(path), /people: people ids must be unique/);
   writeFileSync(path, JSON.stringify({ ...config, people: [] }));
   assert.equal(me(await loadConfig(path)), null);
+});
+
+test("watch toggles: empty means everyone, toggling off from everyone keeps the rest", () => {
+  const all = ["person:alice", "role:lead", "agent:loose-1"];
+  assert.deepEqual(nextWatched([], all, "role:lead"), ["person:alice", "agent:loose-1"]);
+  assert.deepEqual(nextWatched(["person:alice", "agent:loose-1"], all, "role:lead"), []);
+  assert.deepEqual(nextWatched(["person:alice"], all, "role:lead"), ["person:alice", "role:lead"]);
+  assert.deepEqual(nextWatched(["person:alice"], all, "person:alice"), ["person:alice"], "the last one stays on");
 });

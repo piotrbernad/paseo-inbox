@@ -110,6 +110,14 @@ export function isWatched(message: Message, watched: readonly string[]): boolean
   return watched.includes(partyKey(message.from)) || watched.includes(partyKey(message.to));
 }
 
+// Empty `watched` means everyone. Toggling one party off from "everyone" watches all the others.
+export function nextWatched(watched: readonly string[], allKeys: readonly string[], key: string): string[] {
+  const current = watched.length === 0 ? [...allKeys] : [...watched];
+  const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+  if (next.length === 0) return [...watched];
+  return allKeys.every((k) => next.includes(k)) ? [] : next;
+}
+
 export function lastActivity(message: Message): string {
   const state = message.question?.state;
   return state && state.kind !== "open" && state.at > message.sentAt ? state.at : message.sentAt;
