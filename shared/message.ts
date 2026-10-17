@@ -123,6 +123,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// The read receipt a message carries, and the agent it is for: the recipient of a message, the
+// asker of an answered question. Null when nothing is waiting to be read by an agent.
+export function receiptOf(m: Message): { read: Read | null; reader: AgentParty } | null {
+  if (m.question === null) return { read: m.read, reader: m.to };
+  const { state } = m.question;
+  return state.kind === "answered" && m.from.kind === "agent" ? { read: state.read, reader: m.from } : null;
+}
+
 export function isOpenQuestion(message: Message): message is QuestionMessage {
   return message.question !== null && message.question.state.kind === "open";
 }

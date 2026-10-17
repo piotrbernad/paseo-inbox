@@ -2,10 +2,10 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/react-native";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import type { Answered, Message, QuestionMessage } from "../shared/message.ts";
+import { type Answered, type Message, partyName, type QuestionMessage, receiptOf } from "../shared/message.ts";
 import { answerRpc, type ListOutput, retryDeliveryRpc } from "../shared/rpc.ts";
 import { labeler, personName, useResultMutation } from "./data.ts";
-import { ago, when } from "./format.ts";
+import { ago, clock, when } from "./format.ts";
 import { MessageRow } from "./list.tsx";
 import type { Styles } from "./styles.ts";
 
@@ -32,6 +32,7 @@ export function Detail(props: {
         <Text style={styles.small}>
           {[message.ref, `${when(message.sentAt)} (${ago(message.sentAt)})`, message.id].filter(Boolean).join(" · ")}
         </Text>
+        <ReadReceipt message={message} data={data} styles={styles} />
       </View>
       {message.body !== "" ? (
         <Text selectable style={styles.text}>
@@ -54,6 +55,22 @@ export function Detail(props: {
         </View>
       ) : null}
     </View>
+  );
+}
+
+function ReadReceipt({ message, data, styles }: { message: Message; data: ListOutput; styles: Styles }) {
+  const receipt = receiptOf(message);
+  if (!receipt) return null;
+  const { read, reader } = receipt;
+  const what = message.question ? "Answer read" : "Read";
+  if (read === null) {
+    return <Text style={styles.small}>{message.question ? "Answer not" : "Not"} read by {partyName(reader, data.people)} yet</Text>;
+  }
+  const name = read.agentId === reader.agentId ? partyName(reader, data.people) : `${reader.role ?? "agent"} (${read.agentId.slice(0, 8)})`;
+  return (
+    <Text style={styles.small}>
+      {what} by {name} {clock(read.at)}
+    </Text>
   );
 }
 

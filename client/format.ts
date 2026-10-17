@@ -13,3 +13,9 @@ export function when(iso: string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+// "20:41" today, the full date and time otherwise.
+export function clock(iso: string, now = new Date()): string {
+  const full = when(iso);
+  return full.slice(0, 10) === when(now.toISOString()).slice(0, 10) ? full.slice(11) : full;
+}

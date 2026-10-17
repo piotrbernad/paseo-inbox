@@ -2,7 +2,9 @@ import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin
 import { type Config, configPath, loadConfig, me } from "./server/config.ts";
 import { createDirectory, paseoConnect } from "./server/hosts.ts";
 import { createInbox, type Inbox } from "./server/inbox.ts";
+import { createFallback } from "./server/fallback.ts";
 import { startNotifier } from "./server/notify.ts";
+import { startPolling } from "./server/poll.ts";
 import { deliverAnswer } from "./server/send.ts";
 import { createStore, type Store } from "./server/store.ts";
 import { answerRpc, inboxSettings, listRpc, retryDeliveryRpc } from "./shared/rpc.ts";
@@ -58,6 +60,31 @@ export default function contribute(server: PluginServerContext) {
     return (await current()).inbox.retryDelivery(input.id);
   });
 
+  const fallback = createFallback({
+    async state() {
+      const { config, inbox } = await current();
+      const { messages } = await inbox.list();
+      return { messages, self: config.self, hookHost: config.hookHosts.includes(config.self), people: config.people };
+    },
+    async status(agentId) {
+      const { config } = await current();
+      const found = await createDirectory(config, connect).findAgent(agentId, config.self);
+      return found && found.host === config.self ? (found.agent.status ?? "idle") : null;
+    },
+    async steer(agentId, text) {
+      const { config } = await current();
+      const directory = createDirectory(config, connect);
+      const found = await directory.findAgent(agentId, config.self);
+      if (found) await directory.steer(found, text);
+    },
+  });
+  const stopFallback = startPolling({
+    firstMs: 30_000,
+    everyMs: 60_000,
+    label: "waking agents with unread messages",
+    task: fallback.poll,
+  });
+
   const stopNotifier = startNotifier({
     async inbox() {
       const { config, inbox } = await current();
@@ -70,5 +97,8 @@ export default function contribute(server: PluginServerContext) {
     },
     paseo: () => paseo,
   });
-  return () => stopNotifier();
+  return () => {
+    stopNotifier();
+    stopFallback();
+  };
 }

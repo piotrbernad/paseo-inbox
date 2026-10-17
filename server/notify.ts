@@ -1,4 +1,5 @@
 import { isOpenQuestion, type Message, type Person, partyName, type QuestionMessage } from "../shared/message.ts";
+import { startPolling } from "./poll.ts";
 
 const FIRST_POLL_MS = 5_000;
 const POLL_EVERY_MS = 60_000;
@@ -111,23 +112,7 @@ export function createNotifier(deps: NotifierDeps) {
 
 export function startNotifier(deps: NotifierDeps): () => void {
   const notifier = createNotifier(deps);
-  let stopped = false;
-  let timer: ReturnType<typeof setTimeout>;
-
-  const tick = async () => {
-    try {
-      await notifier.poll();
-    } catch (error) {
-      console.error(`Inbox: checking for new questions failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    if (!stopped) timer = setTimeout(tick, POLL_EVERY_MS);
-  };
-  timer = setTimeout(tick, FIRST_POLL_MS);
-
-  return () => {
-    stopped = true;
-    clearTimeout(timer);
-  };
+  return startPolling({ firstMs: FIRST_POLL_MS, everyMs: POLL_EVERY_MS, label: "checking for new questions", task: notifier.poll });
 }
 
 export function notificationText(batch: QuestionMessage[], people: readonly Person[]): string {

@@ -53,6 +53,7 @@ export function makeStyles(theme: PluginTheme, compact: boolean) {
     rowSelected: { backgroundColor: colors.surface2 },
     rowTop: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
     rowParties: { flex: 1, color: colors.foregroundMuted, fontSize: 12 },
+    unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
     rowSubject: { color: colors.foreground, fontSize: compact ? 15 : 14 },
     badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, borderWidth: 1 },
     badgeText: { fontSize: 11, fontWeight: "600" as const },
