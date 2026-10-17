@@ -126,7 +126,7 @@ Install the hook on every host that should use it, then list that host in `hookH
 paseo-inbox install-hooks              # ~/.claude/settings.json and ~/.codex/hooks.json
 ```
 
-It adds a `UserPromptSubmit` and a `PostToolUse` hook running `paseo-inbox hook`, keeps your other hooks and settings, and backs the file up first. `--uninstall` removes exactly these hooks. Claude Code picks the hook up in new sessions. Codex runs a new hook only after you trust it once: open Codex and run `/hooks`. The command is the launcher's path, so the trust holds across updates of paseo-inbox.
+It adds a `UserPromptSubmit` and a `PostToolUse` hook running `paseo-inbox hook`, keeps your other hooks and settings, and backs the file up first. `--uninstall` removes exactly these hooks. Claude Code picks the hook up in new sessions. Codex runs a new hook only after you trust it once: open Codex and run `/hooks`. For a plugin installed from git, the hook runs a small shim in `~/.paseo/bin/paseo-inbox` that finds the current plugin directory, so the command, and Codex's trust in it, survive plugin updates.
 
 ## How agents should use it
 

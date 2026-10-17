@@ -28,14 +28,45 @@ function groupsOf(settings: Json, event: string): Group[] {
 }
 
 // No matcher on PostToolUse: every tool.
+// An inbox hook installed earlier under another path (an older plugin directory) is pointed at
+// `command` instead of being added a second time.
 export function withInboxHooks(settings: Json, command: string): Json {
   const hooks = { ...((settings.hooks as Json | undefined) ?? {}) };
   for (const event of EVENTS) {
     const groups = groupsOf(settings, event);
-    if (groups.some((g) => (g.hooks ?? []).some((h) => isInboxHandler(h, command)))) continue;
+    if (groups.some((g) => (g.hooks ?? []).some((h) => isInboxHandler(h, command)))) {
+      hooks[event] = groups.map((g) => ({
+        ...g,
+        hooks: (g.hooks ?? []).map((h) => (isInboxHandler(h, command) ? { ...h, command } : h)),
+      }));
+      continue;
+    }
     hooks[event] = [...groups, { hooks: [{ type: "command", command, timeout: TIMEOUT_S }] }];
   }
   return { ...settings, hooks };
+}
+
+// Paseo installs a git plugin under <home>/plugins/<id>/<install id>/checkout and replaces that
+// directory on every update. Hooks and agents need a path that survives updates (Codex trusts a
+// hook by its exact command), so they get a shim that finds the current checkout.
+export function stableShim(launcher: string): { path: string; script: string } | null {
+  const match = launcher.match(/^(.*)\/plugins\/([^/]+)\/[^/]+\/checkout\/bin\/paseo-inbox$/);
+  if (!match) return null;
+  const [, home, id] = match;
+  return {
+    path: `${home}/bin/paseo-inbox`,
+    script: [
+      "#!/bin/sh",
+      "# Written by paseo-inbox install-hooks: runs the currently installed plugin's CLI.",
+      `for d in "${home}/plugins/${id}"/*/checkout; do`,
+      '  [ -x "$d/bin/paseo-inbox" ] && exec "$d/bin/paseo-inbox" "$@"',
+      "done",
+      '[ "$1" = hook ] && exit 0',
+      `echo "paseo-inbox: plugin ${id} is not installed" >&2`,
+      "exit 1",
+      "",
+    ].join("\n"),
+  };
 }
 
 export function withoutInboxHooks(settings: Json, command: string): Json {

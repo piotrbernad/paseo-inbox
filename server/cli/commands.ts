@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
@@ -20,7 +20,7 @@ import {
 import { type Config, configPath, expandHome, loadConfig } from "../config.ts";
 import { type Connect, createDirectory, type Directory, paseoConnect, withTimeout } from "../hosts.ts";
 import { runHook } from "../hook.ts";
-import { hookCommand, updateHookFile } from "../install-hooks.ts";
+import { hookCommand, stableShim, updateHookFile } from "../install-hooks.ts";
 import { readLegacyQuestions } from "../legacy.ts";
 import { formatWhen, withdraw } from "../questions.ts";
 import { newMessageId, type Recipient, send, tags } from "../send.ts";
@@ -296,7 +296,13 @@ async function installHooks(args: string[], io: Io): Promise<number> {
     uninstall: { type: "boolean" },
   });
   const both = !values.claude && !values.codex;
-  const command = hookCommand(LAUNCHER);
+  const shim = stableShim(LAUNCHER);
+  if (shim && values.uninstall !== true) {
+    await mkdir(dirname(shim.path), { recursive: true });
+    await writeFile(shim.path, shim.script, { mode: 0o755 });
+    await chmod(shim.path, 0o755);
+  }
+  const command = hookCommand(shim?.path ?? LAUNCHER);
   const now = io.now?.() ?? new Date();
   const uninstall = values.uninstall === true;
   const targets: { name: string; path: string; note: string }[] = [];

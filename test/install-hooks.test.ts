@@ -92,3 +92,29 @@ test("the hook command is the launcher path, quoted when it needs to be", () => 
   assert.equal(hookCommand("/Users/a b/paseo-inbox/bin/paseo-inbox"), "'/Users/a b/paseo-inbox/bin/paseo-inbox' hook");
   assert.match(command, /\/bin\/paseo-inbox hook$/);
 });
+
+test("a git-installed plugin gets a stable shim that finds the current checkout", async () => {
+  const { stableShim } = await import("../server/install-hooks.ts");
+  assert.equal(stableShim("/opt/plugin/bin/paseo-inbox"), null);
+  const shim = stableShim("/home/a/.paseo/plugins/paseo-inbox/1234-abcd/checkout/bin/paseo-inbox");
+  assert.ok(shim);
+  assert.equal(shim.path, "/home/a/.paseo/bin/paseo-inbox");
+  assert.match(shim.script, /for d in "\/home\/a\/\.paseo\/plugins\/paseo-inbox"\/\*\/checkout; do/);
+
+  const dir = join(root, "shim");
+  mkdirSync(join(dir, "plugins/paseo-inbox/new-id/checkout/bin"), { recursive: true });
+  writeFileSync(join(dir, "plugins/paseo-inbox/new-id/checkout/bin/paseo-inbox"), "#!/bin/sh\necho \"current $*\"\n", { mode: 0o755 });
+  const real = stableShim(join(dir, "plugins/paseo-inbox/old-id/checkout/bin/paseo-inbox"));
+  assert.ok(real);
+  writeFileSync(real.path.replace(`${dir}/bin`, dir) + "-shim", real.script, { mode: 0o755 });
+  const { execFileSync } = await import("node:child_process");
+  assert.equal(execFileSync(`${dir}/paseo-inbox-shim`, ["read"]).toString(), "current read\n");
+});
+
+test("an inbox hook installed under an older path is repointed, not duplicated", async () => {
+  const { withInboxHooks } = await import("../server/install-hooks.ts");
+  const old = { hooks: { PostToolUse: [{ hooks: [{ type: "command", command: "/x/plugins/paseo-inbox/old/checkout/bin/paseo-inbox hook", timeout: 30 }] }] } };
+  const next = withInboxHooks(old, "/x/bin/paseo-inbox hook") as { hooks: Record<string, { hooks: { command: string }[] }[]> };
+  assert.deepEqual(next.hooks.PostToolUse.flatMap((g) => g.hooks.map((h) => h.command)), ["/x/bin/paseo-inbox hook"]);
+  assert.equal(next.hooks.UserPromptSubmit.length, 1);
+});
