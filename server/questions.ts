@@ -1,4 +1,4 @@
-import type { AnsweredQuestion, Delivery, Message, Person, QuestionMessage } from "../shared/message.ts";
+import type { AnsweredQuestion, Delivery, Message, Person, QuestionMessage, Read } from "../shared/message.ts";
 
 export function answer(
   current: Message,
@@ -39,11 +39,16 @@ export function withdraw(current: Message, reason: string, people: readonly Pers
   return { ...current, question: { ...current.question, state: { kind: "withdrawn", at: now, reason } } };
 }
 
-export function recordDelivery(current: Message, delivery: Delivery, people: readonly Person[]): Message | string {
+export function recordDelivery(
+  current: Message,
+  delivery: Delivery,
+  read: Read | null,
+  people: readonly Person[],
+): Message | string {
   if (current.question === null) return "That message is not a question.";
   const { state } = current.question;
   if (state.kind !== "answered") return refusalFor(current, people);
-  return { ...current, question: { ...current.question, state: { ...state, delivery } } };
+  return { ...current, question: { ...current.question, state: { ...state, delivery, read: state.read ?? read } } };
 }
 
 export function isAnswered(message: Message): message is AnsweredQuestion {

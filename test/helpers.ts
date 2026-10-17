@@ -39,8 +39,14 @@ export const PEOPLE = [
   { id: "bob", name: "Bob", host: "host-b" },
 ];
 
-export function writeConfig(root: string, self: "host-a" | "host-b", remote: string, storeDir: string): string {
-  const path = join(root, `inbox-${self}.json`);
+export function writeConfig(
+  root: string,
+  self: "host-a" | "host-b",
+  remote: string,
+  storeDir: string,
+  extra: { hookHosts?: string[] } = {},
+): string {
+  const path = join(root, `inbox-${self}${extra.hookHosts ? "-hooks" : ""}.json`);
   writeFileSync(
     path,
     JSON.stringify({
@@ -49,6 +55,7 @@ export function writeConfig(root: string, self: "host-a" | "host-b", remote: str
       people: PEOPLE,
       roleLabel: "team-role",
       store: { repo: remote, branch: "inbox", dir: storeDir },
+      ...extra,
     }),
   );
   return path;

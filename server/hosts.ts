@@ -2,8 +2,11 @@ import type { AgentParty } from "../shared/message.ts";
 import type { Config } from "./config.ts";
 import { bundledModule, paseoResources } from "./paseo-app.ts";
 
+export type AgentStatus = "initializing" | "idle" | "running" | "error" | "closed";
+
 export interface AgentSnapshot {
   id: string;
+  status?: AgentStatus;
   title?: string | null;
   labels?: Record<string, string>;
   archivedAt?: string | null;

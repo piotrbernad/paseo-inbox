@@ -26,6 +26,7 @@ let deliveryFails = false;
 const deliver: Deliver = async (question) => {
   if (deliveryFails) throw new Error("host-a unreachable");
   delivered.push(answerText(question));
+  return { mode: "message", agentId: "lead-1" };
 };
 
 let inboxA: Inbox;

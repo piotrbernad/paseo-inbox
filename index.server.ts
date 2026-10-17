@@ -3,8 +3,7 @@ import { type Config, configPath, loadConfig, me } from "./server/config.ts";
 import { createDirectory, paseoConnect } from "./server/hosts.ts";
 import { createInbox, type Inbox } from "./server/inbox.ts";
 import { startNotifier } from "./server/notify.ts";
-import { answerText } from "./server/questions.ts";
-import { send } from "./server/send.ts";
+import { deliverAnswer } from "./server/send.ts";
 import { createStore, type Store } from "./server/store.ts";
 import { answerRpc, inboxSettings, listRpc, retryDeliveryRpc } from "./shared/rpc.ts";
 
@@ -40,18 +39,7 @@ export default function contribute(server: PluginServerContext) {
       store,
       people: config.people,
       me: me(config)?.id ?? null,
-      async deliver(question) {
-        await send(
-          { config, directory, store: null },
-          {
-            from: { kind: "person", person: question.question.state.by },
-            to: question.from.kind === "agent" ? { kind: "party", party: question.from } : askedByPerson(),
-            body: answerText(question),
-            ref: question.ref,
-            inReplyTo: question.id,
-          },
-        );
-      },
+      deliver: (question) => deliverAnswer({ config, directory }, question),
     });
     return { config, inbox };
   }
@@ -83,8 +71,4 @@ export default function contribute(server: PluginServerContext) {
     paseo: () => paseo,
   });
   return () => stopNotifier();
-}
-
-function askedByPerson(): never {
-  throw new Error("The question was asked by a person, so there is no agent to deliver the answer to.");
 }

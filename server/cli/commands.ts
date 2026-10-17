@@ -31,9 +31,10 @@ const HELP = `paseo-inbox: messages and questions between Paseo agents and their
 
   paseo-inbox init
       Clone the store branch from config.store, or create it on the remote.
-  paseo-inbox send [--from ROLE] TO "message" [--re ID] [--ref X] [--file path] [--no-record]
-      Deliver a message to an agent without interrupting its turn, then record it.
-      TO is a role, role:ROLE or agent:AGENT_ID.
+  paseo-inbox send [--from ROLE] TO "message" [--re ID] [--ref X] [--file path] [--fyi] [--no-record]
+      Send a message to an agent without interrupting its turn, and record it.
+      TO is a role, role:ROLE or agent:AGENT_ID. --fyi never wakes an idle recipient
+      on a host with the hook; it reads the message at its next turn.
   paseo-inbox ask [--from ROLE] --to PERSON --title "..." (--context "..." | --context-file path)
                   [--option "A: text"]... [--recommend A] [--ref X]
       Ask a person a question. The answer comes back as a message from them.
@@ -85,6 +86,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
       re: { type: "string" },
       ref: { type: "string" },
       file: { type: "string" },
+      fyi: { type: "boolean" },
       "no-record": { type: "boolean" },
     });
     const [toArg, ...words] = positionals;
@@ -102,10 +104,12 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
         body: body.replace(/\s+$/, ""),
         ref: values.ref ?? null,
         inReplyTo: values.re ?? null,
+        wake: !values.fyi,
       },
     );
     const label = partyLabel(sent.to, ctx.config.people);
-    ctx.io.out(sent.id ? `sent ${sent.id} to ${label}` : `sent to ${label} (not recorded)`);
+    const how = { message: "", stub: " (woke it with a notice)", none: " (it reads it at its next tool call or turn)" }[sent.mode];
+    ctx.io.out(sent.recorded ? `sent ${sent.id} to ${label}${how}` : `sent to ${label} (not recorded)`);
     if (sent.recordError) ctx.io.err(`paseo-inbox: delivered, but not recorded in the store: ${sent.recordError}`);
     return 0;
   },

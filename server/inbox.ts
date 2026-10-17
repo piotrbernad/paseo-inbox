@@ -5,12 +5,15 @@ import {
   newestFirst,
   partyEntries,
   type Person,
+  type Read,
 } from "../shared/message.ts";
 import type { AnswerInput, ListOutput, Result } from "../shared/rpc.ts";
 import { answer, isAnswered, recordDelivery } from "./questions.ts";
+import type { DeliveryMode } from "./send.ts";
 import { errorText, type Store } from "./store.ts";
 
-export type Deliver = (question: AnsweredQuestion) => Promise<void>;
+// Hands the answer to the asking agent; the whole answer in its chat counts as read.
+export type Deliver = (question: AnsweredQuestion) => Promise<{ mode: DeliveryMode; agentId: string }>;
 
 export type Inbox = ReturnType<typeof createInbox>;
 
@@ -26,13 +29,15 @@ export function createInbox(opts: {
 
   async function deliverAndRecord(message: AnsweredQuestion): Promise<Result> {
     let delivery: Delivery;
+    let read: Read | null = null;
     try {
-      await deliver(message);
+      const { mode, agentId } = await deliver(message);
       delivery = { kind: "delivered", at: now().toISOString() };
+      if (mode === "message") read = { at: delivery.at, agentId };
     } catch (error) {
       delivery = { kind: "failed", at: now().toISOString(), error: errorText(error) };
     }
-    const recorded = await store.update(message.id, "delivery", (current) => recordDelivery(current, delivery, people));
+    const recorded = await store.update(message.id, "delivery", (current) => recordDelivery(current, delivery, read, people));
     if (recorded.kind === "refused") {
       const sent = delivery.kind === "delivered" ? "delivered" : "not delivered";
       return { kind: "refused", reason: `Answer saved and ${sent}, but its delivery state was not saved. ${recorded.reason}` };
