@@ -60,22 +60,23 @@ export const QuestionSchema = z.object({
 });
 export type Question = z.infer<typeof QuestionSchema>;
 
-const Envelope = {
-  version: z.literal(1),
-  id: z.string().regex(MESSAGE_ID),
-  from: PartySchema,
-  ref: z.string().nullable(),
-  inReplyTo: z.string().nullable(),
-  sentAt: Iso,
-  body: z.string(),
-};
+function envelope<To extends z.ZodType, Q extends z.ZodType>(to: To, question: Q) {
+  return z.object({
+    version: z.literal(1),
+    id: z.string().regex(MESSAGE_ID),
+    from: PartySchema,
+    to,
+    ref: z.string().nullable(),
+    inReplyTo: z.string().nullable(),
+    sentAt: Iso,
+    body: z.string(),
+    question,
+  });
+}
 
 // A question is exactly a message addressed to a person; agents never receive one and people
 // never receive anything else.
-export const MessageSchema = z.union([
-  z.object({ ...Envelope, to: AgentPartySchema, question: z.null() }),
-  z.object({ ...Envelope, to: PersonPartySchema, question: QuestionSchema }),
-]);
+export const MessageSchema = z.union([envelope(AgentPartySchema, z.null()), envelope(PersonPartySchema, QuestionSchema)]);
 export type Message = z.infer<typeof MessageSchema>;
 export type QuestionMessage = Extract<Message, { question: Question }>;
 export type AnsweredQuestion = QuestionMessage & { question: Question & { state: Answered } };

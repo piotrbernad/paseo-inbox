@@ -119,7 +119,7 @@ export function startNotifier(deps: NotifierDeps): () => void {
     try {
       await notifier.poll();
     } catch (error) {
-      console.error("Inbox: checking for new questions failed", error);
+      console.error(`Inbox: checking for new questions failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (!stopped) timer = setTimeout(tick, POLL_EVERY_MS);
   };
