@@ -44,7 +44,7 @@ test("send steers the recipient on another host, then records both agent ids", a
     PASEO_AGENT_ID: "lead-1",
   });
   assert.equal(sent.code, 0, sent.err);
-  const [, id] = sent.out.match(/^sent (\S+) to designer · host-b$/) ?? [];
+  const [, id] = sent.out.match(/^sent (\S+) to Designer$/) ?? [];
   assert.ok(id, sent.out);
 
   const steer = hosts.steered.at(-1);
@@ -53,7 +53,7 @@ test("send steers the recipient on another host, then records both agent ids", a
   assert.equal(steer?.agentId, "designer-1", "archived agents with the role are skipped");
   assert.equal(
     steer?.text,
-    `[inbox ${id}] from lead · host-a to designer · host-b\n` +
+    `[inbox ${id}] from Lead to Designer\n` +
       `Reply: paseo-inbox send --from designer lead --re ${id} "…"\n\nPlease review the header.`,
   );
 
@@ -82,7 +82,7 @@ test("a reply with --re and --file records inReplyTo, and the role comes from th
   assert.equal(message.from.kind === "agent" && message.from.agentId, "designer-1");
   assert.equal(message.from.kind === "agent" && message.from.role, "designer");
   assert.equal(message.to.kind === "agent" && message.to.agentId, "lead-1");
-  assert.match(hosts.steered.at(-1)?.text ?? "", new RegExp(`^\\[inbox ${id}\\] from designer · host-b to lead · host-a \\(REF-7, re ${firstId}\\)\n`));
+  assert.match(hosts.steered.at(-1)?.text ?? "", new RegExp(`^\\[inbox ${id}\\] from Designer to Lead \\(REF-7, re ${firstId}\\)\n`));
 });
 
 test("--no-record delivers without touching the store", async () => {
@@ -92,9 +92,9 @@ test("--no-record delivers without touching the store", async () => {
     PASEO_AGENT_ID: "lead-1",
   });
   assert.equal(sent.code, 0, sent.err);
-  assert.equal(sent.out, "sent to designer · host-b (not recorded)");
+  assert.equal(sent.out, "sent to Designer (not recorded)");
   assert.equal(hosts.steered.length, steeredBefore + 1);
-  assert.match(hosts.steered.at(-1)?.text ?? "", /^\[inbox\] from lead · host-a to designer · host-b\nReply: paseo-inbox send --from designer lead "…"\n\nHeads up$/);
+  assert.match(hosts.steered.at(-1)?.text ?? "", /^\[inbox\] from Lead to Designer\nReply: paseo-inbox send --from designer lead "…"\n\nHeads up$/);
   assert.equal(commits(), before);
 });
 
@@ -103,7 +103,7 @@ test("a message from a person points the agent at ask, not at a reply", async ()
   assert.equal(sent.code, 0, sent.err);
   assert.equal(
     hosts.steered.at(-1)?.text,
-    "[inbox] from Alice to lead · host-a (re 20261017-1200-lead-abcd)\n" +
+    "[inbox] from Alice to Lead (re 20261017-1200-lead-abcd)\n" +
       'New question to Alice: paseo-inbox ask --from lead --to alice --title "…" --context "…"\n\nAnswer',
   );
 });
@@ -141,5 +141,26 @@ test("failures: unknown role, a person as recipient, no sender identity, unreach
     assert.match(down.err, /No agent with team-role=designer on any host; unreachable: host-b \(Cannot connect to host-b\)/);
   } finally {
     hosts.down.delete("host-b");
+  }
+});
+
+test("list and show name agents by their current session title, as their hosts report it", async () => {
+  const sent = await cli(configA, asA, ["send", "--from", "lead", "designer", "Renamed later"], { PASEO_AGENT_ID: "lead-1" });
+  const id = sent.out.split(" ")[1];
+  const lead = hosts.agents["host-a"][0];
+  lead.title = "EM — Engineering Manager";
+  try {
+    const listed = await cli(configB, asB, ["list", "--all", "--for", "role:lead"]);
+    assert.ok(listed.out.split("\n").some((l) => l.startsWith(`${id}\tmessage\tEM — Engineering Manager\tDesigner\t`)), listed.out);
+    const shown = await cli(configB, asB, ["show", id]);
+    assert.match(shown.out, new RegExp(`^>> \\[${id}\\] from EM — Engineering Manager to Designer, `));
+    assert.equal((stored(id).from as { title: string }).title, "Lead", "the store keeps the title from send time");
+
+    hosts.down.add("host-a");
+    const offline = await cli(configB, asB, ["show", id]);
+    assert.match(offline.out, new RegExp(`^>> \\[${id}\\] from Lead to Designer, `), "the stored title when the host is down");
+  } finally {
+    lead.title = "Lead";
+    hosts.down.delete("host-a");
   }
 });

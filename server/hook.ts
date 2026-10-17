@@ -10,7 +10,7 @@ import {
   isRecent,
   type Message,
   type Party,
-  partyLabel,
+  partyName,
   type Read,
 } from "../shared/message.ts";
 import type { Config } from "./config.ts";
@@ -63,11 +63,11 @@ type Entry = { message: Unread; head: string; body: string; tail: string };
 function entry(m: Unread, config: Config): Entry {
   const show = `Full text: paseo-inbox show ${m.id}`;
   if (m.question === null) {
-    const head = `[${m.id}] from ${partyLabel(m.from, config.people)} to ${partyLabel(m.to, config.people)}${tags(m.ref, m.inReplyTo)}`;
+    const head = `[${m.id}] from ${partyName(m.from, config.people)} to ${partyName(m.to, config.people)}${tags(m.ref, m.inReplyTo)}`;
     return { message: m, head, body: m.body, tail: `${show}\n${replyHint({ id: m.id, from: m.from, to: m.to }, config.people)}` };
   }
   const by: Party = { kind: "person", person: m.question.state.by };
-  const head = `[${m.id}] answer from ${partyLabel(by, config.people)} to ${partyLabel(m.from, config.people)}${tags(m.ref, null)}`;
+  const head = `[${m.id}] answer from ${partyName(by, config.people)} to ${partyName(m.from, config.people)}${tags(m.ref, null)}`;
   return { message: m, head, body: answerText(m), tail: `${show}\n${replyHint({ id: null, from: by, to: m.from }, config.people)}` };
 }
 
@@ -111,7 +111,7 @@ const CursorSchema = z.object({
 });
 type Cursor = z.infer<typeof CursorSchema>;
 
-const ReceiptSchema = z.object({ id: z.string(), at: z.string(), agentId: z.string() });
+const ReceiptSchema = z.object({ id: z.string(), at: z.string(), agentId: z.string(), title: z.string().nullable().default(null) });
 
 function stateDir(dir: string): string {
   return join(dir, ".git", "paseo-inbox");
@@ -337,7 +337,7 @@ export async function flushReceipts(store: Store, dir: string): Promise<string |
   for (const name of names) {
     const file = join(receiptsDir(dir), name);
     const parsed = ReceiptSchema.safeParse(safeJson(await readFile(file, "utf8").catch(() => "")));
-    if (parsed.success) receipts.set(parsed.data.id, { file, read: { at: parsed.data.at, agentId: parsed.data.agentId } });
+    if (parsed.success) receipts.set(parsed.data.id, { file, read: { at: parsed.data.at, agentId: parsed.data.agentId, title: parsed.data.title } });
     else await rm(file, { force: true });
   }
   if (receipts.size === 0) return store.sync();

@@ -1,7 +1,7 @@
 import { useRpc } from "@getpaseo/plugin/client";
 import { useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { isOpenQuestion, type Message, type Party, partyKey, partyLabel } from "../shared/message.ts";
+import { isOpenQuestion, type Message } from "../shared/message.ts";
 import { type ListOutput, listRpc, type Result } from "../shared/rpc.ts";
 
 export function useInbox(hostId: string) {
@@ -34,11 +34,6 @@ export function useResultMutation<Input>(call: (input: Input) => Promise<Result>
     onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["paseo-inbox"] }),
   });
-}
-
-export function labeler(data: ListOutput): (party: Party) => string {
-  const labels = new Map(data.parties.map((p) => [p.key, p.label]));
-  return (party) => labels.get(partyKey(party)) ?? partyLabel(party, data.people);
 }
 
 export function personName(data: ListOutput, id: string): string {

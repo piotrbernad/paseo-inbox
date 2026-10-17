@@ -95,13 +95,13 @@ test("a new question to me notifies once with the exact text", async () => {
       cwd: "/store",
       title: "Inbox",
       labels: { "paseo-inbox-notifier": "true" },
-      prompt: "Question from lead (REF-12): Turn off the old checkout?",
+      prompt: "Question from Lead (REF-12): Turn off the old checkout?",
     },
   ]);
 });
 
 test("a question without a ref drops the parenthesis", () => {
-  assert.equal(notificationText([question("alice", "Which colour?")], PEOPLE), "Question from lead: Which colour?");
+  assert.equal(notificationText([question("alice", "Which colour?")], PEOPLE), "Question from Lead: Which colour?");
 });
 
 test("a question to another person never notifies", async () => {

@@ -1,4 +1,4 @@
-import type { AgentParty } from "../shared/message.ts";
+import type { AgentParty, Titles } from "../shared/message.ts";
 import type { Config } from "./config.ts";
 import { bundledModule, paseoResources } from "./paseo-app.ts";
 
@@ -118,6 +118,28 @@ export function createDirectory(config: Config, connect: Connect) {
       return agent ? { host: config.self, agent } : null;
     },
 
+    // The current session titles of these agents, one connection per host. Agents on hosts that
+    // cannot be reached are left out.
+    async titles(agents: readonly AgentParty[]): Promise<Titles> {
+      const byHost = new Map<string, Set<string>>();
+      for (const { host, agentId } of agents) {
+        if (agentId === null || !(host in config.hosts)) continue;
+        byHost.set(host, (byHost.get(host) ?? new Set()).add(agentId));
+      }
+      const found = new Map<string, string>();
+      await Promise.all(
+        [...byHost].map(([host, ids]) =>
+          on(host, async (client) => {
+            for (const agentId of ids) {
+              const title = (await client.fetchAgent({ agentId }).catch(() => null))?.agent.title?.trim();
+              if (title) found.set(agentId, title);
+            }
+          }).catch(() => {}),
+        ),
+      );
+      return found;
+    },
+
     steer(located: Located, text: string): Promise<unknown> {
       return on(located.host, (client) => client.sendAgentMessage(located.agent.id, text, { activeTurnBehavior: "steer" }));
     },
@@ -125,3 +147,12 @@ export function createDirectory(config: Config, connect: Connect) {
 }
 
 export type Directory = ReturnType<typeof createDirectory>;
+
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+    timer.unref();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}

@@ -19,5 +19,6 @@ process.exitCode = await main(argv, {
   out: (line) => process.stdout.write(`${line}\n`),
   err: (line) => process.stderr.write(`${line}\n`),
 });
-// The agent waits for its hook to exit: do not wait for a daemon connection that timed out.
-if (argv[0] === "hook") process.stdout.write("", () => process.exit(0));
+// Agents wait for the command (and for their hook) to exit: do not wait for a daemon connection
+// that timed out.
+process.stderr.write("", () => process.stdout.write("", () => process.exit()));

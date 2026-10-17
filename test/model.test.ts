@@ -10,7 +10,9 @@ import {
   nextWatched,
   partyEntries,
   partyKey,
+  partyName,
   RECENT_MS,
+  withTitles,
 } from "../shared/message.ts";
 import { loadConfig, me } from "../server/config.ts";
 import { PEOPLE, tempRoot } from "./helpers.ts";
@@ -84,7 +86,7 @@ test("files written before receipts existed parse as already read when they reac
   const old = MessageSchema.parse(message());
   assert.ok(old.question === null);
   assert.equal(old.wake, true);
-  assert.deepEqual(old.read, { at: "2026-10-17T12:00:00Z", agentId: "loose-1" }, "sent whole into the chat");
+  assert.deepEqual(old.read, { at: "2026-10-17T12:00:00Z", agentId: "loose-1", title: null }, "sent whole into the chat");
 
   const answeredAt = { kind: "answered", choice: null, text: "ok", by: "alice", at: "2026-10-17T12:05:00Z" };
   const pending = MessageSchema.parse(question({ ...answeredAt, delivery: { kind: "pending" } }));
@@ -93,6 +95,7 @@ test("files written before receipts existed parse as already read when they reac
   assert.deepEqual(delivered.question?.state.kind === "answered" && delivered.question.state.read, {
     at: "2026-10-17T12:06:00Z",
     agentId: "lead-1",
+    title: null,
   });
 
   const fyi = MessageSchema.parse({ ...message(), wake: false, read: null });
@@ -100,13 +103,29 @@ test("files written before receipts existed parse as already read when they reac
   assert.equal(MessageSchema.safeParse({ ...message(), read: { at: "yesterday", agentId: "loose-1" } }).success, false);
 });
 
-test("party entries list people first, then everyone in the messages, with display labels", () => {
+test("party entries list people first, then everyone in the messages, by session name", () => {
   assert.deepEqual(partyEntries([message()], PEOPLE), [
     { key: "person:alice", label: "Alice" },
     { key: "person:bob", label: "Bob" },
-    { key: "role:lead", label: "lead · host-a" },
-    { key: "agent:loose-1", label: "Spike · host-b" },
+    { key: "role:lead", label: "Lead" },
+    { key: "agent:loose-1", label: "Spike" },
   ]);
+});
+
+test("a party is shown by its session title, else its role, else its id; current titles replace stored ones", () => {
+  const agent = (title: string | null, role: string | null, agentId: string | null) =>
+    ({ kind: "agent", role, agentId, title, host: "host-a" }) as const;
+  assert.equal(partyName(agent("EM — Engineering Manager", "em", "a-1"), PEOPLE), "EM — Engineering Manager");
+  assert.equal(partyName(agent("  ", "em", "a-1"), PEOPLE), "em");
+  assert.equal(partyName(agent(null, null, "a-1"), PEOPLE), "a-1");
+  assert.equal(partyName({ kind: "person", person: "alice" }, PEOPLE), "Alice");
+  assert.equal(partyName({ kind: "person", person: "carol" }, PEOPLE), "carol");
+
+  const m = MessageSchema.parse(message());
+  const shown = withTitles(m, new Map([["loose-1", "Caching spike"], ["other", "x"]]));
+  assert.equal(partyName(shown.to, PEOPLE), "Caching spike");
+  assert.equal(shown.from, m.from, "parties without a known title stay as they are");
+  assert.equal(partyName(withTitles(m, new Map()).to, PEOPLE), "Spike");
 });
 
 test("config: me is the person on this host; ~ expands; mistakes are reported by field", async () => {

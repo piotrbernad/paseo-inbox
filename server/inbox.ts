@@ -1,4 +1,6 @@
 import {
+  type AgentParty,
+  agentsIn,
   type AnsweredQuestion,
   type Delivery,
   isRecent,
@@ -6,14 +8,17 @@ import {
   partyEntries,
   type Person,
   type Read,
+  type Titles,
+  withTitles,
 } from "../shared/message.ts";
 import type { AnswerInput, ListOutput, Result } from "../shared/rpc.ts";
 import { answer, isAnswered, recordDelivery } from "./questions.ts";
+import type { AgentSnapshot } from "./hosts.ts";
 import type { DeliveryMode } from "./send.ts";
 import { errorText, type Store } from "./store.ts";
 
 // Hands the answer to the asking agent; the whole answer in its chat counts as read.
-export type Deliver = (question: AnsweredQuestion) => Promise<{ mode: DeliveryMode; agentId: string }>;
+export type Deliver = (question: AnsweredQuestion) => Promise<{ mode: DeliveryMode; reader: AgentSnapshot }>;
 
 export type Inbox = ReturnType<typeof createInbox>;
 
@@ -22,6 +27,8 @@ export function createInbox(opts: {
   people: readonly Person[];
   me: string | null;
   deliver: Deliver;
+  // Current session titles of these agents; the list shows them instead of the stored ones.
+  titles?: (agents: AgentParty[]) => Promise<Titles>;
   now?: () => Date;
 }) {
   const { store, people, deliver } = opts;
@@ -31,9 +38,9 @@ export function createInbox(opts: {
     let delivery: Delivery;
     let read: Read | null = null;
     try {
-      const { mode, agentId } = await deliver(message);
+      const { mode, reader } = await deliver(message);
       delivery = { kind: "delivered", at: now().toISOString() };
-      if (mode === "message") read = { at: delivery.at, agentId };
+      if (mode === "message") read = { at: delivery.at, agentId: reader.id, title: reader.title ?? null };
     } catch (error) {
       delivery = { kind: "failed", at: now().toISOString(), error: errorText(error) };
     }
@@ -51,7 +58,9 @@ export function createInbox(opts: {
     async list(): Promise<ListOutput> {
       const { messages, skipped, syncError } = await store.list();
       const at = now().getTime();
-      const visible = messages.filter((m) => isRecent(m, at)).sort(newestFirst);
+      const recent = messages.filter((m) => isRecent(m, at)).sort(newestFirst);
+      const titles = (await opts.titles?.(agentsIn(recent)).catch(() => null)) ?? new Map<string, string>();
+      const visible = recent.map((m) => withTitles(m, titles));
       return {
         me: opts.me,
         people: [...people],

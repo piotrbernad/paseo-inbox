@@ -91,9 +91,9 @@ test("a running agent gets new messages after its next tool call, once, and they
     text,
     [
       CONTEXT_HEADER,
-      `[${first}] from lead · host-a to designer · host-b (REF-5)\nUse code PINEAPPLE-42 for the banner.\n` +
+      `[${first}] from Lead to Designer (REF-5)\nUse code PINEAPPLE-42 for the banner.\n` +
         `Full text: paseo-inbox show ${first}\nReply: paseo-inbox send --from designer lead --re ${first} "…"`,
-      `[${second}] from lead · host-a to designer · host-b (re ${first})\nAlso: no rush.\n` +
+      `[${second}] from Lead to Designer (re ${first})\nAlso: no rush.\n` +
         `Full text: paseo-inbox show ${second}\nReply: paseo-inbox send --from designer lead --re ${second} "…"`,
     ].join("\n\n"),
   );
@@ -133,9 +133,9 @@ test("a stub prompt makes the hook fetch at once, so an idle agent woken from an
   const before = hosts.steered.length;
   const id = await send("designer", "--ref", "REF-8", "Wake up: code MANGO-7.");
   const stub = hosts.steered.slice(before);
-  assert.deepEqual(stub.map((s) => s.text), ["Inbox: 1 new message from lead (REF-8)."]);
+  assert.deepEqual(stub.map((s) => s.text), ["Inbox: 1 new message from Lead (REF-8)."]);
   const { text } = await hook({ hook_event_name: "UserPromptSubmit", prompt: stub[0].text });
-  assert.match(text ?? "", new RegExp(`\\[${id}\\] from lead · host-a to designer · host-b \\(REF-8\\)\\nWake up: code MANGO-7\\.`));
+  assert.match(text ?? "", new RegExp(`\\[${id}\\] from Lead to Designer \\(REF-8\\)\\nWake up: code MANGO-7\\.`));
   await flushB();
   designer.status = "running";
 });
@@ -155,7 +155,7 @@ test("an answer from a person in the Inbox reaches the asking agent through the 
   const { text } = await hook(postToolUse);
   assert.equal(
     text,
-    `${CONTEXT_HEADER}\n\n[${id}] answer from Alice to designer · host-b\nAnswer to question ${id}: Ship it?\nYes, ship it.\n` +
+    `${CONTEXT_HEADER}\n\n[${id}] answer from Alice to Designer\nAnswer to question ${id}: Ship it?\nYes, ship it.\n` +
       `Full text: paseo-inbox show ${id}\nNew question to Alice: paseo-inbox ask --from designer --to alice --title "…" --context "…"`,
   );
   await flushB();
@@ -171,7 +171,7 @@ test("a new session with the role reads what its archived predecessor left unrea
   try {
     await cli(configB, asB, ["sync"]);
     const { text } = await hook(postToolUse, "designer-2");
-    assert.ok(text?.includes(`[${id}] from lead · host-a to designer · host-b`), text ?? "");
+    assert.ok(text?.includes(`[${id}] from Lead to Designer`), text ?? "");
     assert.equal((await hook(postToolUse, "designer-1")).text, null, "the receipt is already queued; the old session does not get it again");
     await flushB();
     assert.equal((stored(id) as AgentMessage).read?.agentId, "designer-2");
@@ -236,8 +236,8 @@ test("show prints a message in full with its thread", async () => {
   assert.equal(shown.code, 0, shown.err);
   const blocks = shown.out.split("\n\n");
   assert.equal(blocks.length, 2);
-  assert.match(blocks[0], new RegExp(`^>> \\[${first}\\] from lead · host-a to designer · host-b, \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC\\nQuestion one\\nwith two lines`));
-  assert.match(blocks[1], new RegExp(`^\\[${replyId}\\] from designer · host-b to lead · host-a \\(re ${first}\\), .*\\nAnswer one\\nRead .* by agent lead-1\\.$`));
+  assert.match(blocks[0], new RegExp(`^>> \\[${first}\\] from Lead to Designer, \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC\\nQuestion one\\nwith two lines`));
+  assert.match(blocks[1], new RegExp(`^\\[${replyId}\\] from Designer to Lead \\(re ${first}\\), .*\\nAnswer one\\nRead .* by Lead\\.$`));
   assert.equal(existsSync(join(dirB, ".git/paseo-inbox")), true);
   assert.ok(backgroundCalls > 0);
 });

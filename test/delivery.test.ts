@@ -61,8 +61,8 @@ after(cleanup);
 test("hook host, idle recipient: the message is recorded unread, then a stub without the body wakes it", async () => {
   designer.status = "idle";
   const sent = await sendAs({ PASEO_AGENT_ID: "lead-1" }, "--from", "lead", "designer", "--ref", "REF-3", "Secret body");
-  assert.equal(sent.out, `sent ${sent.id} to designer · host-b (woke it with a notice)`);
-  assert.deepEqual(sent.steered.map((s) => [s.agentId, s.text]), [["designer-1", "Inbox: 1 new message from lead (REF-3)."]]);
+  assert.equal(sent.out, `sent ${sent.id} to Designer (woke it with a notice)`);
+  assert.deepEqual(sent.steered.map((s) => [s.agentId, s.text]), [["designer-1", "Inbox: 1 new message from Lead (REF-3)."]]);
   const message = stored(sent.id as string);
   assert.ok(message.question === null);
   assert.equal(message.read, null);
@@ -72,7 +72,7 @@ test("hook host, idle recipient: the message is recorded unread, then a stub wit
 test("hook host, running recipient: recorded, nothing sent to its chat", async () => {
   designer.status = "running";
   const sent = await sendAs({ PASEO_AGENT_ID: "lead-1" }, "--from", "lead", "designer", "While you work");
-  assert.equal(sent.out, `sent ${sent.id} to designer · host-b (it reads it at its next tool call or turn)`);
+  assert.equal(sent.out, `sent ${sent.id} to Designer (it reads it at its next tool call or turn)`);
   assert.deepEqual(sent.steered, []);
   const message = stored(sent.id as string);
   assert.equal(message.question === null && message.read, null);
@@ -89,9 +89,9 @@ test("--fyi never wakes an idle recipient and is stored with wake false", async 
 test("a host without the hook gets the whole message, recorded as read on delivery", async () => {
   lead.status = "idle";
   const sent = await sendAs({ PASEO_AGENT_ID: "designer-1" }, "--from", "designer", "lead", "--fyi", "Full text");
-  assert.equal(sent.out, `sent ${sent.id} to lead · host-a`);
+  assert.equal(sent.out, `sent ${sent.id} to Lead`);
   assert.equal(sent.steered.length, 1);
-  assert.match(sent.steered[0].text, /^\[inbox \S+\] from designer · host-a to lead · host-a\nReply: .*\n\nFull text$/);
+  assert.match(sent.steered[0].text, /^\[inbox \S+\] from designer to Lead\nReply: .*\n\nFull text$/);
   const message = stored(sent.id as string);
   assert.equal(message.question === null && message.wake, false);
   assert.equal(message.question === null && message.read?.agentId, "lead-1");
@@ -129,7 +129,7 @@ test("answers use the same modes: whole text off hook hosts, a stub to an idle a
   const toLead = await ask("lead-1", "lead");
   before = hosts.steered.length;
   await inbox.answer({ id: toLead, choice: null, text: "No", by: "alice" });
-  assert.match(hosts.steered[before]?.text ?? "", /^\[inbox\] from Alice to lead · host-a \(REF-9, re \S+\)\n.*\n\nAnswer to question/);
+  assert.match(hosts.steered[before]?.text ?? "", /^\[inbox\] from Alice to Lead \(REF-9, re \S+\)\n.*\n\nAnswer to question/);
   const leadState = stored(toLead).question?.state;
   assert.equal(leadState?.kind === "answered" && leadState.read?.agentId, "lead-1");
 });

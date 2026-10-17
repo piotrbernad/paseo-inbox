@@ -1,13 +1,16 @@
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import { type Config, configPath, loadConfig, me } from "./server/config.ts";
-import { createDirectory, paseoConnect } from "./server/hosts.ts";
+import { createDirectory, paseoConnect, withTimeout } from "./server/hosts.ts";
 import { createInbox, type Inbox } from "./server/inbox.ts";
 import { createFallback } from "./server/fallback.ts";
 import { startNotifier } from "./server/notify.ts";
 import { startPolling } from "./server/poll.ts";
 import { deliverAnswer } from "./server/send.ts";
 import { createStore, type Store } from "./server/store.ts";
+import type { AgentParty, Titles } from "./shared/message.ts";
 import { answerRpc, inboxSettings, listRpc, retryDeliveryRpc } from "./shared/rpc.ts";
+
+const TITLES_EVERY_MS = 60_000;
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(inboxSettings);
@@ -19,6 +22,15 @@ export default function contribute(server: PluginServerContext) {
   const capture = (_: unknown, context: PluginHandlerContext) => {
     paseo = context.paseo;
   };
+
+  // Session titles, asked of the daemons at most once a minute; the list polls every 30 seconds.
+  let titles: { at: number; map: Titles } = { at: 0, map: new Map() };
+  async function currentTitles(config: Config, agents: AgentParty[]): Promise<Titles> {
+    if (Date.now() - titles.at < TITLES_EVERY_MS) return titles.map;
+    const map = await withTimeout(createDirectory(config, connect).titles(agents), 5_000).catch(() => titles.map);
+    titles = { at: Date.now(), map };
+    return map;
+  }
 
   async function current(): Promise<{ config: Config; inbox: Inbox }> {
     const state = await settings.read();
@@ -42,6 +54,7 @@ export default function contribute(server: PluginServerContext) {
       people: config.people,
       me: me(config)?.id ?? null,
       deliver: (question) => deliverAnswer({ config, directory }, question),
+      titles: (agents) => currentTitles(config, agents),
     });
     return { config, inbox };
   }

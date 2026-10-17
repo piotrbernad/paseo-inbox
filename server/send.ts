@@ -4,12 +4,11 @@ import {
   type AgentParty,
   type AnsweredQuestion,
   type Party,
-  partyLabel,
   partyName,
   type Person,
 } from "../shared/message.ts";
 import type { Config } from "./config.ts";
-import type { AgentStatus, Directory, Located } from "./hosts.ts";
+import type { AgentSnapshot, AgentStatus, Directory, Located } from "./hosts.ts";
 import { answerText } from "./questions.ts";
 import type { Store } from "./store.ts";
 
@@ -91,7 +90,7 @@ export function header(
   config: Config,
 ): string {
   const { id, from, to, ref, inReplyTo } = opts;
-  const first = `[inbox${id ? ` ${id}` : ""}] from ${partyLabel(from, config.people)} to ${partyLabel(to, config.people)}${tags(ref, inReplyTo)}`;
+  const first = `[inbox${id ? ` ${id}` : ""}] from ${partyName(from, config.people)} to ${partyName(to, config.people)}${tags(ref, inReplyTo)}`;
   return `${first}\n${replyHint({ id, from, to }, config.people)}`;
 }
 
@@ -147,7 +146,7 @@ export async function send(deps: Deps, input: SendInput): Promise<Sent> {
   });
   if (mode === "message") {
     await whole();
-    const written = await deps.store.create(message({ at: now.toISOString(), agentId: located.agent.id }), "send");
+    const written = await deps.store.create(message({ at: now.toISOString(), agentId: located.agent.id, title: located.agent.title ?? null }), "send");
     return { id, to, mode, recorded: written.kind === "ok", recordError: written.kind === "ok" ? null : written.reason };
   }
   const written = await deps.store.create(message(null), "send");
@@ -164,7 +163,7 @@ export async function send(deps: Deps, input: SendInput): Promise<Sent> {
 export async function deliverAnswer(
   deps: { config: Config; directory: Directory },
   question: AnsweredQuestion,
-): Promise<{ mode: DeliveryMode; agentId: string }> {
+): Promise<{ mode: DeliveryMode; reader: AgentSnapshot }> {
   if (question.from.kind !== "agent") {
     throw new Error("The question was asked by a person, so there is no agent to deliver the answer to.");
   }
@@ -183,5 +182,5 @@ export async function deliverAnswer(
   } else if (mode === "stub") {
     await deps.directory.steer(located, stubText([partyName(from, deps.config.people)], question.ref));
   }
-  return { mode, agentId: located.agent.id };
+  return { mode, reader: located.agent };
 }

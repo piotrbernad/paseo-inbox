@@ -57,7 +57,7 @@ test("import-questions maps the earlier format and is idempotent", async () => {
     question: { title: "Question aaaa", options: [{ key: "A", text: "Yes" }], recommendation: "A", state: { kind: "open" } },
   });
   const imported = MessageSchema.parse(JSON.parse(remoteFile(remote, "inbox", "messages/20261017-1000-lead-bbbb.json")));
-  assert.deepEqual(imported.question?.state, { ...answered, read: { at: "2026-10-17T11:00:05Z", agentId: "lead" } });
+  assert.deepEqual(imported.question?.state, { ...answered, read: { at: "2026-10-17T11:00:05Z", agentId: "lead", title: null } });
 
   const commitsAfterFirst = git(root, "--git-dir", remote, "rev-list", "--count", "inbox");
   const second = await cli(config, connect, ["import-questions", questions]);

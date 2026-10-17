@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { type Answered, type Message, partyName, type QuestionMessage, receiptOf } from "../shared/message.ts";
 import { answerRpc, type ListOutput, retryDeliveryRpc } from "../shared/rpc.ts";
-import { labeler, personName, useResultMutation } from "./data.ts";
+import { personName, useResultMutation } from "./data.ts";
 import { ago, clock, when } from "./format.ts";
 import { MessageRow } from "./list.tsx";
 import type { Styles } from "./styles.ts";
@@ -18,7 +18,6 @@ export function Detail(props: {
   onSelect(id: string): void;
 }) {
   const { message, data, styles, onSelect } = props;
-  const label = labeler(data);
   const parent = message.inReplyTo ? data.messages.find((m) => m.id === message.inReplyTo) : undefined;
   const replies = data.messages.filter((m) => m.inReplyTo === message.id).reverse();
 
@@ -27,7 +26,7 @@ export function Detail(props: {
       <View style={{ gap: 4 }}>
         {message.question ? <Text style={styles.title}>{message.question.title}</Text> : null}
         <Text style={styles.muted}>
-          {label(message.from)} → {label(message.to)}
+          {partyName(message.from, data.people)} → {partyName(message.to, data.people)}
         </Text>
         <Text style={styles.small}>
           {[message.ref, `${when(message.sentAt)} (${ago(message.sentAt)})`, message.id].filter(Boolean).join(" · ")}
@@ -66,7 +65,7 @@ function ReadReceipt({ message, data, styles }: { message: Message; data: ListOu
   if (read === null) {
     return <Text style={styles.small}>{message.question ? "Answer not" : "Not"} read by {partyName(reader, data.people)} yet</Text>;
   }
-  const name = read.agentId === reader.agentId ? partyName(reader, data.people) : `${reader.role ?? "agent"} (${read.agentId.slice(0, 8)})`;
+  const name = read.title ?? (read.agentId === reader.agentId ? partyName(reader, data.people) : (reader.role ?? read.agentId));
   return (
     <Text style={styles.small}>
       {what} by {name} {clock(read.at)}
@@ -108,7 +107,7 @@ function AnswerForm({ message, data, styles }: { message: QuestionMessage; data:
   const by = message.to.person;
   const [choice, setChoice] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const answer = useResultMutation(useRpc(answerRpc), () => `Answer sent to ${labeler(data)(message.from)}`);
+  const answer = useResultMutation(useRpc(answerRpc), () => `Answer sent to ${partyName(message.from, data.people)}`);
   const canAnswer = (choice !== null || text.trim() !== "") && !answer.isPending;
 
   return (
@@ -155,8 +154,8 @@ function AnswerForm({ message, data, styles }: { message: QuestionMessage; data:
 
 function AnswerCard(props: { message: QuestionMessage; state: Answered; data: ListOutput; styles: Styles }) {
   const { message, state, data, styles } = props;
-  const retry = useResultMutation(useRpc(retryDeliveryRpc), () => `Delivered to ${labeler(data)(message.from)}`);
-  const asker = labeler(data)(message.from);
+  const retry = useResultMutation(useRpc(retryDeliveryRpc), () => `Delivered to ${partyName(message.from, data.people)}`);
+  const asker = partyName(message.from, data.people);
   const { delivery } = state;
   const canRetry =
     delivery.kind === "failed" || (delivery.kind === "pending" && Date.now() - Date.parse(state.at) > STUCK_PENDING_MS);

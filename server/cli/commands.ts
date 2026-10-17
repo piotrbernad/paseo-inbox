@@ -4,17 +4,19 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
+  agentsIn,
   isOpenQuestion,
   isRecent,
   isWatched,
   type Message,
   newestFirst,
   type Party,
-  partyLabel,
+  partyName,
   type Person,
+  withTitles,
 } from "../../shared/message.ts";
 import { type Config, configPath, expandHome, loadConfig } from "../config.ts";
-import { type Connect, createDirectory, type Directory, paseoConnect } from "../hosts.ts";
+import { type Connect, createDirectory, type Directory, paseoConnect, withTimeout } from "../hosts.ts";
 import { flushReceipts, runHook } from "../hook.ts";
 import { hookCommand, updateHookFile } from "../install-hooks.ts";
 import { readLegacyQuestions } from "../legacy.ts";
@@ -124,7 +126,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
         wake: !values.fyi,
       },
     );
-    const label = partyLabel(sent.to, ctx.config.people);
+    const label = partyName(sent.to, ctx.config.people);
     const how = { message: "", stub: " (woke it with a notice)", none: " (it reads it at its next tool call or turn)" }[sent.mode];
     ctx.io.out(sent.recorded ? `sent ${sent.id} to ${label}${how}` : `sent to ${label} (not recorded)`);
     if (sent.recordError) ctx.io.err(`paseo-inbox: delivered, but not recorded in the store: ${sent.recordError}`);
@@ -182,7 +184,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     return 0;
   },
 
-  async list(args, { config, store, io, now }) {
+  async list(args, { config, store, directory, io, now }) {
     const { values } = parse(args, { all: { type: "boolean" }, for: { type: "string" } });
     const { messages, skipped, syncError } = await store.list();
     if (syncError) io.err(`paseo-inbox: showing local data, sync failed: ${syncError}`);
@@ -192,13 +194,13 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
       .filter((m) => (values.all ? isRecent(m, at) : isOpenQuestion(m)))
       .filter((m) => isWatched(m, watched))
       .sort(newestFirst);
-    for (const m of rows) io.out(row(m, config.people));
+    for (const m of await retitle(rows, directory)) io.out(row(m, config.people));
     if (rows.length === 0) io.out(values.all ? "no messages in the last 7 days" : "no open questions");
     if (skipped) io.err(`paseo-inbox: skipped ${skipped} invalid file(s) in ${config.store.dir}/messages`);
     return 0;
   },
 
-  async show(args, { config, store, io }) {
+  async show(args, { config, store, directory, io }) {
     const { positionals } = parse(args, {});
     const [id] = positionals;
     if (!id || positionals.length > 1) throw new UsageError("show needs one message id.");
@@ -207,7 +209,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     const { messages } = await store.list();
     const message = messages.find((m) => m.id === id);
     if (!message) throw new Error(`No message ${id}.`);
-    const thread = threadOf(message, messages);
+    const thread = await retitle(threadOf(message, messages), directory);
     io.out(thread.map((m) => describe(m, config.people, m.id === id)).join("\n\n"));
     return 0;
   },
@@ -297,7 +299,7 @@ async function hook(io: Io): Promise<number> {
       lookupRole: (agentId) =>
         withTimeout(
           directory.self(agentId).then((found) => found?.agent.labels?.[config.roleLabel] ?? null),
-          ROLE_LOOKUP_MS,
+          LOOKUP_MS,
         ),
       syncInBackground: io.syncInBackground ?? syncInBackground,
       fastPath: {
@@ -312,15 +314,13 @@ async function hook(io: Io): Promise<number> {
   return 0;
 }
 
-const ROLE_LOOKUP_MS = 3_000;
+const LOOKUP_MS = 3_000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
-    timer.unref();
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+// Messages as shown: their agents carry their current session titles, when their hosts answer in
+// time.
+async function retitle(messages: Message[], directory: Directory): Promise<Message[]> {
+  const titles = await withTimeout(directory.titles(agentsIn(messages)), LOOKUP_MS).catch(() => new Map<string, string>());
+  return messages.map((m) => withTitles(m, titles));
 }
 
 async function readStdin(): Promise<string> {
@@ -356,7 +356,7 @@ function threadOf(message: Message, messages: readonly Message[]): Message[] {
 
 function describe(m: Message, people: readonly Person[], focus: boolean): string {
   const lines = [
-    `${focus ? ">> " : ""}[${m.id}] from ${partyLabel(m.from, people)} to ${partyLabel(m.to, people)}${tags(m.ref, m.inReplyTo)}, ${formatWhen(m.sentAt)}`,
+    `${focus ? ">> " : ""}[${m.id}] from ${partyName(m.from, people)} to ${partyName(m.to, people)}${tags(m.ref, m.inReplyTo)}, ${formatWhen(m.sentAt)}`,
   ];
   if (m.question) {
     const { question } = m;
@@ -370,12 +370,12 @@ function describe(m: Message, people: readonly Person[], focus: boolean): string
   if (state?.kind === "open") lines.push("Open.");
   if (state?.kind === "withdrawn") lines.push(`Withdrawn ${formatWhen(state.at)}${state.reason ? `: ${state.reason}` : ""}.`);
   if (state?.kind === "answered") {
-    lines.push(`Answered by ${partyLabel({ kind: "person", person: state.by }, people)} ${formatWhen(state.at)}:`);
+    lines.push(`Answered by ${partyName({ kind: "person", person: state.by }, people)} ${formatWhen(state.at)}:`);
     if (state.choice !== null) lines.push(`  Choice: ${state.choice}`);
     if (state.text !== "") lines.push(`  ${state.text}`);
   }
   const read = m.question === null ? m.read : state?.kind === "answered" ? state.read : null;
-  if (read) lines.push(`Read ${formatWhen(read.at)} by agent ${read.agentId}.`);
+  if (read) lines.push(`Read ${formatWhen(read.at)} by ${read.title ?? `agent ${read.agentId}`}.`);
   return lines.join("\n");
 }
 
@@ -435,5 +435,5 @@ function row(m: Message, people: readonly Person[]): string {
           ? `answered by ${state.by} ${formatWhen(state.at)}, delivery ${state.delivery.kind}`
           : `withdrawn ${formatWhen(state.at)}`;
   const subject = m.question?.title ?? m.body.split("\n")[0];
-  return [m.id, status, partyLabel(m.from, people), partyLabel(m.to, people), m.ref ?? "-", subject].join("\t");
+  return [m.id, status, partyName(m.from, people), partyName(m.to, people), m.ref ?? "-", subject].join("\t");
 }

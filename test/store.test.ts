@@ -26,7 +26,7 @@ let deliveryFails = false;
 const deliver: Deliver = async (question) => {
   if (deliveryFails) throw new Error("host-a unreachable");
   delivered.push(answerText(question));
-  return { mode: "message", agentId: "lead-1" };
+  return { mode: "message", reader: { id: "lead-1", title: "Lead" } };
 };
 
 let inboxA: Inbox;
@@ -190,13 +190,13 @@ test("list shows open questions, --all adds recent closed ones, --for filters by
   assert.equal(open.code, 0, open.err);
   const openLines = open.out.split("\n");
   assert.equal(openLines.length, 1);
-  assert.match(openLines[0], /\topen\tlead · host-a\tAlice\t-\tRename the module\?$/);
+  assert.match(openLines[0], /\topen\tLead\tAlice\t-\tRename the module\?$/);
   assert.match(open.err, /skipped 1 invalid file/);
 
   const all = await cli(configB, hosts.connectAs("host-b"), ["list", "--all"]);
   const lines = all.out.split("\n");
   assert.equal(lines.length, 5);
-  assert.ok(lines.some((l) => /\tanswered by bob .* UTC, delivery delivered\tlead · host-a\tBob\tREF-12\tColour of the save button$/.test(l)));
+  assert.ok(lines.some((l) => /\tanswered by bob .* UTC, delivery delivered\tLead\tBob\tREF-12\tColour of the save button$/.test(l)));
   assert.ok(lines.some((l) => /\twithdrawn .*\tModule name$/.test(l)));
 
   const forBob = await cli(configB, hosts.connectAs("host-b"), ["list", "--all", "--for", "bob"]);
@@ -231,7 +231,7 @@ test("people and me come from the config", async () => {
     [
       { key: "person:alice", label: "Alice" },
       { key: "person:bob", label: "Bob" },
-      { key: "role:lead", label: "lead · host-a" },
+      { key: "role:lead", label: "Lead" },
     ],
   );
 });

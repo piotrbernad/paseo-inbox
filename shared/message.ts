@@ -36,7 +36,12 @@ export const DeliverySchema = z.discriminatedUnion("kind", [
 export type Delivery = z.infer<typeof DeliverySchema>;
 
 // The recipient agent's read receipt, written when a hook put the message into its context.
-export const ReadSchema = z.object({ at: Iso, agentId: z.string().min(1) });
+export const ReadSchema = z.object({
+  at: Iso,
+  agentId: z.string().min(1),
+  // The reader's session title when it read the message.
+  title: z.string().nullable().default(null),
+});
 export type Read = z.infer<typeof ReadSchema>;
 
 
@@ -140,15 +145,30 @@ export function partyKey(party: Party): string {
   return party.role !== null ? `role:${party.role}` : `agent:${party.agentId}`;
 }
 
-export function partyLabel(party: Party, people: readonly Person[]): string {
-  if (party.kind === "person") return people.find((p) => p.id === party.person)?.name ?? party.person;
-  const name = party.role ?? party.title ?? party.agentId?.slice(0, 8) ?? "agent";
-  return `${name} · ${party.host}`;
-}
-
+// How a party is shown everywhere: a person by name; an agent by its Paseo session title, else its
+// role, else its id.
 export function partyName(party: Party, people: readonly Person[]): string {
   if (party.kind === "person") return people.find((p) => p.id === party.person)?.name ?? party.person;
-  return party.role ?? party.title ?? party.agentId?.slice(0, 8) ?? "an agent";
+  return party.title?.trim() || party.role || party.agentId || "agent";
+}
+
+// Session titles change after a message is sent (Paseo names a session from its first turns).
+// agent id -> current title, as the daemons report it.
+export type Titles = ReadonlyMap<string, string>;
+
+function retitled<P extends Party>(party: P, titles: Titles): P {
+  if (party.kind !== "agent" || party.agentId === null) return party;
+  const title = titles.get(party.agentId);
+  return title === undefined || title === party.title ? party : { ...party, title };
+}
+
+// The message as shown: its parties carry their current session titles where known.
+export function withTitles<M extends Message>(message: M, titles: Titles): M {
+  return { ...message, from: retitled(message.from, titles), to: retitled(message.to, titles) };
+}
+
+export function agentsIn(messages: readonly Message[]): AgentParty[] {
+  return messages.flatMap((m) => [m.from, m.to]).filter((p): p is AgentParty => p.kind === "agent");
 }
 
 export function isWatched(message: Message, watched: readonly string[]): boolean {
@@ -191,7 +211,7 @@ export function partyEntries(messages: readonly Message[], people: readonly Pers
   for (const message of [...messages].sort(newestFirst)) {
     for (const party of [message.from, message.to]) {
       const key = partyKey(party);
-      if (!entries.has(key)) entries.set(key, { key, label: partyLabel(party, people) });
+      if (!entries.has(key)) entries.set(key, { key, label: partyName(party, people) });
     }
   }
   return [...entries.values()];

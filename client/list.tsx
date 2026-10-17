@@ -1,8 +1,7 @@
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { Pressable, Text, View } from "react-native";
-import { lastActivity, type Message, nextWatched, receiptOf } from "../shared/message.ts";
+import { lastActivity, type Message, nextWatched, partyName, receiptOf } from "../shared/message.ts";
 import type { ListOutput } from "../shared/rpc.ts";
-import { labeler } from "./data.ts";
 import { ago } from "./format.ts";
 import type { Styles } from "./styles.ts";
 
@@ -23,7 +22,6 @@ export function MessageRow(props: {
   onPress(): void;
 }) {
   const { message, data, styles, selected, prefix, onPress } = props;
-  const label = labeler(data);
   const tag = badge(message, styles);
   const subject = message.question?.title ?? message.body.split("\n")[0];
   const unread = receiptOf(message)?.read === null;
@@ -38,7 +36,7 @@ export function MessageRow(props: {
         {unread ? <View accessibilityLabel="Not read by its agent yet" style={styles.unreadDot} /> : null}
         <Text numberOfLines={1} style={styles.rowParties}>
           {prefix ? `${prefix} · ` : ""}
-          {label(message.from)} → {label(message.to)}
+          {partyName(message.from, data.people)} → {partyName(message.to, data.people)}
         </Text>
         <Text style={styles.small}>{ago(lastActivity(message))}</Text>
       </View>
