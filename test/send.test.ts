@@ -164,3 +164,43 @@ test("list and show name agents by their current session title, as their hosts r
     hosts.down.delete("host-a");
   }
 });
+
+test("messages are short: send and ask refuse longer text with a hint, and send nothing", async () => {
+  const hint = /the limit is \d+\. Keep it short and concrete: put the details in a PR, ticket or file and send the link\./;
+  const before = commits();
+  const steered = hosts.steered.length;
+  const send = (body: string, config = configA) =>
+    cli(config, asA, ["send", "--from", "lead", "designer", body], { PASEO_AGENT_ID: "lead-1" });
+
+  const long = await send("x".repeat(201));
+  assert.equal(long.code, 1);
+  assert.match(long.err, /The message is 201 characters; the limit is 200\./);
+  assert.match(long.err, hint);
+  assert.equal((await send(`${"ż".repeat(200)}  \n`)).code, 0, "200 characters fit; Polish letters count once; trailing space is dropped");
+
+  const file = join(root, "long.md");
+  writeFileSync(file, "y".repeat(250));
+  const fromFile = await cli(configA, asA, ["send", "--from", "lead", "designer", "--file", file], { PASEO_AGENT_ID: "lead-1" });
+  assert.match(fromFile.err, /The message is 250 characters; the limit is 200\./);
+
+  const roomy = writeConfig(root, "host-a", remote, dirA, { maxBodyChars: 300 }, "inbox-host-a-roomy");
+  assert.equal((await send("x".repeat(250), roomy)).code, 0, "maxBodyChars from the config");
+  assert.match((await send("x".repeat(301), roomy)).err, /The message is 301 characters; the limit is 300\./);
+
+  const ask = (...args: string[]) =>
+    cli(configA, asA, ["ask", "--from", "lead", "--to", "alice", ...args], { PASEO_AGENT_ID: "lead-1" });
+  const title = await ask("--title", "t".repeat(101), "--context", "c");
+  assert.match(title.err, /The title is 101 characters; the limit is 100\./);
+  const context = await ask("--title", "T", "--context", "c".repeat(201));
+  assert.match(context.err, /The context is 201 characters; the limit is 200\./);
+  const option = await ask("--title", "T", "--context", "c", "--option", "A: ok", "--option", `B: ${"o".repeat(121)}`);
+  assert.match(option.err, /Option B is 121 characters; the limit is 120\./);
+  for (const r of [title, context, option]) {
+    assert.equal(r.code, 1);
+    assert.match(r.err, hint);
+  }
+  assert.equal((await ask("--title", "t".repeat(100), "--context", "c".repeat(200), "--option", `A: ${"o".repeat(120)}`)).code, 0);
+
+  assert.equal(commits(), before + 3, "only the three that fit were recorded");
+  assert.equal(hosts.steered.length, steered + 2, "refused messages reach no one");
+});

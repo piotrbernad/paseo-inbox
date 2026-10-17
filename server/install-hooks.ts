@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 // Claude Code's settings.json and Codex's hooks.json share this shape:
 // { "hooks": { "<Event>": [{ "matcher"?: "...", "hooks": [{ "type": "command", "command": "..." }] }] } }
 const EVENTS = ["UserPromptSubmit", "PostToolUse"] as const;
-// Seconds. A hook woken by a stub waits for a sync of up to 20 s.
+// Seconds; generous, and unchanged so that Codex keeps trusting the installed hook.
 const TIMEOUT_S = 30;
 
 type Json = Record<string, unknown>;

@@ -14,6 +14,8 @@ export const ConfigSchema = z
     hosts: z.record(z.string(), z.string().min(1)),
     people: z.array(PersonSchema).default([]),
     roleLabel: z.string().min(1).default("team-role"),
+    // Messages are short and concrete; details go in a PR, ticket or file, and the message links it.
+    maxBodyChars: z.number().int().positive().default(200),
     // Hosts whose agents run `paseo-inbox hook`: messages reach them through the hook, and only an
     // idle recipient gets a short wake-up notice. Other hosts get the whole message in the chat.
     hookHosts: z.array(z.string().min(1)).default([]),

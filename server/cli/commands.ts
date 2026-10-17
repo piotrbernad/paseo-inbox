@@ -44,12 +44,14 @@ const HELP = `paseo-inbox: messages and questions between Paseo agents and their
   paseo-inbox init
       Clone the store branch from config.store, or create it on the remote.
   paseo-inbox send [--from ROLE] TO "message" [--re ID] [--ref X] [--file path] [--fyi] [--no-record]
-      Send a message to an agent without interrupting its turn, and record it.
+      Send a message to an agent without interrupting its turn, and record it. A message is at
+      most 200 characters (config maxBodyChars): put details in a PR, ticket or file and link it.
       TO is a role, role:ROLE or agent:AGENT_ID. --fyi never wakes an idle recipient
       on a host with the hook; it reads the message at its next turn.
   paseo-inbox ask [--from ROLE] --to PERSON --title "..." (--context "..." | --context-file path)
                   [--option "A: text"]... [--recommend A] [--ref X]
-      Ask a person a question. The answer comes back as a message from them.
+      Ask a person a question. The answer comes back as a message from them. The title is at
+      most 100 characters, the context at most maxBodyChars, each option at most 120.
   paseo-inbox list [--all] [--for PARTY]
       Open questions; --all adds everything from the last 7 days.
       PARTY is person:ID, role:ROLE, agent:AGENT_ID, or a bare person id or role.
@@ -116,8 +118,9 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     });
     const [toArg, ...words] = positionals;
     if (!toArg) throw new UsageError("send needs a recipient.");
-    const body = values.file !== undefined ? await readFile(values.file, "utf8") : words.join(" ");
+    const body = (values.file !== undefined ? await readFile(values.file, "utf8") : words.join(" ")).replace(/\s+$/, "");
     if (body.trim() === "") throw new UsageError("send needs a message, or --file path.");
+    fits("The message", body, ctx.config.maxBodyChars);
     if (values.re !== undefined && !/^[a-z0-9-]+$/.test(values.re)) throw new UsageError(`Invalid --re id: ${values.re}`);
 
     const from = await sender(values.from, ctx, { allowPerson: true });
@@ -126,7 +129,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
       {
         from,
         to: recipient(toArg, ctx.config),
-        body: body.replace(/\s+$/, ""),
+        body,
         ref: values.ref ?? null,
         inReplyTo: values.re ?? null,
         wake: !values.fyi,
@@ -154,15 +157,19 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     if (!person) throw new UsageError(`--to must be one of: ${ctx.config.people.map((p) => p.id).join(", ") || "(no people in config)"}`);
     const title = values.title?.trim() ?? "";
     if (title === "" || title.includes("\n")) throw new UsageError("--title must be one non-empty line.");
+    fits("The title", title, MAX_TITLE_CHARS);
     if ((values.context === undefined) === (values["context-file"] === undefined)) {
       throw new UsageError("Pass exactly one of --context or --context-file.");
     }
-    const context = values.context ?? (await readFile(values["context-file"] as string, "utf8"));
+    const context = (values.context ?? (await readFile(values["context-file"] as string, "utf8"))).trim();
+    fits("The context", context, ctx.config.maxBodyChars);
     const options = (values.option ?? []).map((raw) => {
       const at = raw.indexOf(":");
       const key = at === -1 ? "" : raw.slice(0, at).trim();
       if (key === "") throw new UsageError(`--option must look like "A: text", got: ${raw}`);
-      return { key, text: raw.slice(at + 1).trim() };
+      const text = raw.slice(at + 1).trim();
+      fits(`Option ${key}`, text, MAX_OPTION_CHARS);
+      return { key, text };
     });
     const keys = options.map((o) => o.key);
     if (new Set(keys).size !== keys.length) throw new UsageError("--option keys must be unique.");
@@ -180,7 +187,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
       ref: values.ref ?? null,
       inReplyTo: null,
       sentAt: now.toISOString(),
-      body: context.trim(),
+      body: context,
       question: { title, options, recommendation: values.recommend ?? null, state: { kind: "open" } },
     };
     const written = await ctx.store.create(message, "ask");
@@ -423,6 +430,19 @@ function describe(m: Message, people: readonly Person[], focus: boolean): string
   const read = m.question === null ? m.read : state?.kind === "answered" ? state.read : null;
   if (read) lines.push(`Read ${formatWhen(read.at)} by ${read.title ?? `agent ${read.agentId}`}.`);
   return lines.join("\n");
+}
+
+const MAX_TITLE_CHARS = 100;
+const MAX_OPTION_CHARS = 120;
+
+function fits(what: string, text: string, max: number): void {
+  const length = [...text].length;
+  if (length > max) {
+    throw new Error(
+      `${what} is ${length} characters; the limit is ${max}. Keep it short and concrete: ` +
+        "put the details in a PR, ticket or file and send the link.",
+    );
+  }
 }
 
 function parse<const O extends ParseArgsOptionsConfig>(args: string[], options: O) {
