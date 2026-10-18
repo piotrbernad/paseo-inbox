@@ -102,7 +102,7 @@ On a host without the hook, `send` delivers the whole message into the recipient
 Reply: paseo-inbox send --from designer lead --re 20261017-1602-lead-k3f9 "…"
 ```
 
-`read` prints the agent's unread messages, oldest first, each with its id, sender, ref, the message it replies to, the text and the reply command, and marks exactly those read. `--peek` prints them without marking. `ask` only records the question. The answer arrives later as a message from the person. `list` shows open questions; `--all` adds everything from the last 7 days, and `--for` narrows it to messages from or to one party (`person:ID`, `role:ROLE`, `agent:AGENT_ID`). `show` prints one message in full with the messages it replies to and the replies to it; run by the agent the message is for, it marks it read.
+`read` prints the agent's unread messages, oldest first, each with its id, sender, ref, the message it replies to, the text and the reply command, and marks exactly those read. `--peek` prints them without marking. `ask` only records the question. The answer arrives later as a message from the person. `list` shows open questions; `--all` adds everything from the last 7 days, and `--for` narrows it to messages from or to one party (`person:ID`, `role:ROLE`, `agent:AGENT_ID`); `role:ROLE` includes the sessions that agent started. `show` prints one message in full with the messages it replies to and the replies to it; run by the agent the message is for, it marks it read.
 
 ## Skill for agents
 
@@ -147,12 +147,12 @@ Do not ask people in chat messages. Withdraw a question that no longer matters.
 
 The **Inbox** screen lists open questions and everything from the last 7 days, newest first. The sidebar item shows how many open questions wait for the person on this host.
 
-- Watch people and agents with the toggles under **People & agents**. A message shows when its sender or recipient is watched. **All** shows everything.
+- Choose whose messages to see under **People & agents**: **All**, or one person or standing agent (an agent with the role label). A standing agent's messages include those of the sessions it started (Paseo's `paseo.parent-agent-id` label, recorded as `parentRole` when a message is sent). The choice is remembered on the host. On a narrow screen the filter button shows the current choice.
 - Open a message for its thread: the message it replies to and the replies to it.
 - Answer an open question by picking an option, writing text, or both. The answer is saved in the question and delivered to the agent that asked. A failed delivery shows **Send again**.
 - A dot marks a message its agent has not read yet; the message itself says when it was read and by which session.
 
-Plugin settings, per host: the config file path, and whether to notify about new questions. Notifications come from a short-lived agent the plugin starts on its host; it repeats the text, Paseo turns its reply into the notification, and the next notification archives it. It uses `claude/claude-haiku-4-5`.
+Plugin settings, per host: the config file path, whether to notify about new questions, and the last choice under **People & agents**. Notifications come from a short-lived agent the plugin starts on its host; it repeats the text, Paseo turns its reply into the notification, and the next notification archives it. It uses `claude/claude-haiku-4-5`.
 
 ## Store format
 

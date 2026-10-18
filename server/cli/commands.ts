@@ -7,7 +7,7 @@ import {
   agentsIn,
   isOpenQuestion,
   isRecent,
-  isWatched,
+  inView,
   type Message,
   newestFirst,
   type Party,
@@ -54,7 +54,8 @@ const HELP = `paseo-inbox: messages and questions between Paseo agents and their
       most 100 characters, the context at most maxBodyChars, each option at most 120.
   paseo-inbox list [--all] [--for PARTY]
       Open questions; --all adds everything from the last 7 days.
-      PARTY is person:ID, role:ROLE, agent:AGENT_ID, or a bare person id or role.
+      PARTY is person:ID, role:ROLE, agent:AGENT_ID, or a bare person id or role. A role includes
+      the sessions its agent started.
   paseo-inbox read [--peek]
       Print this agent's unread messages, oldest first, and mark them read. --peek leaves them unread.
   paseo-inbox show ID
@@ -209,10 +210,10 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     const { messages, skipped, syncError } = await store.list();
     if (syncError) io.err(`paseo-inbox: showing local data, sync failed: ${syncError}`);
     const at = now().getTime();
-    const watched = values.for !== undefined ? [partyFilter(values.for, config)] : [];
+    const view = values.for !== undefined ? partyFilter(values.for, config) : "all";
     const rows = messages
       .filter((m) => (values.all ? isRecent(m, at) : isOpenQuestion(m)))
-      .filter((m) => isWatched(m, watched))
+      .filter((m) => inView(m, view))
       .sort(newestFirst);
     for (const m of await retitle(rows, directory)) io.out(row(m, config.people));
     if (rows.length === 0) io.out(values.all ? "no messages in the last 7 days" : "no open questions");

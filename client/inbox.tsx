@@ -4,7 +4,7 @@ import { Icon, Modal, ScrollView } from "@getpaseo/plugin/client/react-native";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { isWatched } from "../shared/message.ts";
+import { inView, viewChoices } from "../shared/message.ts";
 import { inboxSettings, type ListOutput } from "../shared/rpc.ts";
 import { openQuestionsFor, useInbox } from "./data.ts";
 import { Detail } from "./detail.tsx";
@@ -54,20 +54,33 @@ export function InboxScreen({ host, theme, layout }: PluginScreenProps) {
     );
   }
 
-  const watched = settings.status === "ready" ? settings.values.watched : [];
-  const saveWatched = (next: string[]) => {
-    if (settings.status !== "ready") return;
-    void settings.save({ ...settings.values, watched: next }, settings.revision);
+  const view = settings.status === "ready" ? settings.values.view : "all";
+  const choices = viewChoices(data.parties, view);
+  const viewLabel = choices.find((c) => c.key === view)?.label ?? null;
+  const choose = (next: string) => {
+    setFilterOpen(false);
+    if (settings.status !== "ready" || next === view) return;
+    void settings.save({ ...settings.values, view: next }, settings.revision);
   };
-  const visible = data.messages.filter((m) => isWatched(m, watched));
+  const visible = data.messages.filter((m) => inView(m, view));
   const selected = data.messages.find((m) => m.id === selectedId) ?? null;
   const parties = (
     <PartiesPanel
-      data={data}
-      watched={watched}
+      choices={choices}
+      view={view}
       styles={styles}
       disabled={settings.status !== "ready" || settings.saving}
-      onChange={saveWatched}
+      onChange={choose}
+    />
+  );
+  const list = (highlighted: string | null) => (
+    <MessageList
+      messages={visible}
+      data={data}
+      styles={styles}
+      selectedId={highlighted}
+      viewLabel={viewLabel}
+      onSelect={setSelectedId}
     />
   );
   const notices = <Notices data={data} styles={styles} />;
@@ -92,15 +105,21 @@ export function InboxScreen({ host, theme, layout }: PluginScreenProps) {
     return (
       <View style={styles.screen}>
         <View style={styles.toolbar}>
-          <Text style={styles.muted}>{watched.length === 0 ? "Everyone" : `Watching ${watched.length}`}</Text>
-          <Pressable accessibilityRole="button" onPress={() => setFilterOpen(true)} style={styles.buttonQuiet}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`People & agents: ${viewLabel ?? "All"}`}
+            onPress={() => setFilterOpen(true)}
+            style={styles.buttonQuiet}
+          >
             <Icon name="ListFilter" size={16} color={theme.colors.foreground} />
-            <Text style={styles.text}>People & agents</Text>
+            <Text numberOfLines={1} style={styles.text}>
+              {viewLabel ?? "All"}
+            </Text>
           </Pressable>
         </View>
         <ScrollView style={styles.scroll}>
           {notices}
-          <MessageList messages={visible} data={data} styles={styles} selectedId={null} onSelect={setSelectedId} />
+          {list(null)}
         </ScrollView>
         <Modal
           title="People & agents"
@@ -120,7 +139,7 @@ export function InboxScreen({ host, theme, layout }: PluginScreenProps) {
         <ScrollView style={styles.scroll}>
           <View style={styles.content}>{parties}</View>
           {notices}
-          <MessageList messages={visible} data={data} styles={styles} selectedId={selectedId} onSelect={setSelectedId} />
+          {list(selectedId)}
         </ScrollView>
       </View>
       <View style={styles.mainColumn}>

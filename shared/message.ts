@@ -174,17 +174,23 @@ export function agentsIn(messages: readonly Message[]): AgentParty[] {
   return messages.flatMap((m) => [m.from, m.to]).filter((p): p is AgentParty => p.kind === "agent");
 }
 
-export function isWatched(message: Message, watched: readonly string[]): boolean {
-  if (watched.length === 0) return true;
-  return watched.includes(partyKey(message.from)) || watched.includes(partyKey(message.to));
+// What the Inbox screen shows: "all", or the messages of one person or standing agent
+// ("person:<id>", "role:<role>"). A standing agent's messages include those of the sessions it
+// started.
+export const ViewSchema = z.string().regex(/^(all|person:.+|role:.+)$/);
+
+export function inView(message: Message, view: string): boolean {
+  if (view === "all") return true;
+  return [message.from, message.to].some(
+    (p) => partyKey(p) === view || (p.kind === "agent" && p.parentRole !== null && `role:${p.parentRole}` === view),
+  );
 }
 
-// Empty `watched` means everyone. Toggling one party off from "everyone" watches all the others.
-export function nextWatched(watched: readonly string[], allKeys: readonly string[], key: string): string[] {
-  const current = watched.length === 0 ? [...allKeys] : [...watched];
-  const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
-  if (next.length === 0) return [...watched];
-  return allKeys.every((k) => next.includes(k)) ? [] : next;
+// The setting before views: a list of watched party keys, empty for everyone.
+export function viewFromWatched(watched: unknown): string {
+  if (!Array.isArray(watched) || watched.length !== 1) return "all";
+  const parsed = ViewSchema.safeParse(watched[0]);
+  return parsed.success ? parsed.data : "all";
 }
 
 export function lastActivity(message: Message): string {
@@ -205,17 +211,31 @@ export function newestFirst(a: Message, b: Message): number {
 
 export type PartyEntry = { key: string; label: string };
 
+// The choices besides "all": every person in config order, then every standing agent (one with a
+// role) that sent, received or started a session that sent or received a recent message, by
+// label so the choices stay put as messages arrive. A role is labelled with its newest session
+// title. Sessions without a role are never a choice.
 export function partyEntries(messages: readonly Message[], people: readonly Person[]): PartyEntry[] {
-  const entries = new Map<string, PartyEntry>();
-  for (const person of people) {
-    const key = partyKey({ kind: "person", person: person.id });
-    entries.set(key, { key, label: person.name });
-  }
+  const persons = people.map((person) => ({ key: partyKey({ kind: "person", person: person.id }), label: person.name }));
+  const roles = new Map<string, PartyEntry>();
+  const parents = new Set<string>();
   for (const message of [...messages].sort(newestFirst)) {
     for (const party of [message.from, message.to]) {
+      if (party.kind !== "agent") continue;
+      if (party.parentRole !== null) parents.add(party.parentRole);
       const key = partyKey(party);
-      if (!entries.has(key)) entries.set(key, { key, label: partyName(party, people) });
+      if (party.role !== null && !roles.has(key)) roles.set(key, { key, label: partyName(party, people) });
     }
   }
-  return [...entries.values()];
+  for (const role of parents) {
+    const key = `role:${role}`;
+    if (!roles.has(key)) roles.set(key, { key, label: role });
+  }
+  return [...persons, ...[...roles.values()].sort((a, b) => a.label.localeCompare(b.label))];
+}
+
+// The choices to render: the current view stays visible even when nothing recent mentions it.
+export function viewChoices(entries: readonly PartyEntry[], view: string): PartyEntry[] {
+  if (view === "all" || entries.some((e) => e.key === view)) return [...entries];
+  return [...entries, { key: view, label: view.slice(view.indexOf(":") + 1) }];
 }

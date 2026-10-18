@@ -1,6 +1,6 @@
 import { defineRpc, defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
-import { MessageSchema, PersonSchema } from "./message.ts";
+import { MessageSchema, PersonSchema, ViewSchema, viewFromWatched } from "./message.ts";
 
 export const ResultSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("ok"), message: MessageSchema }),
@@ -47,10 +47,19 @@ export const retryDeliveryRpc = defineRpc({
 export const inboxSettings = defineSettings({
   id: "inbox",
   scope: "host",
-  version: 1,
+  version: 2,
   schema: z.object({
     configPath: z.string().default(""),
     notify: z.boolean().default(true),
-    watched: z.array(z.string()).default([]),
+    // "all", "person:<id>" or "role:<role>": the last choice on the Inbox screen.
+    view: ViewSchema.default("all"),
   }),
+  migrate: migrateSettings,
 });
+
+// Version 1 kept `watched`, a list of party keys (empty for everyone).
+export function migrateSettings(values: unknown, fromVersion: number): unknown {
+  if (fromVersion >= 2 || typeof values !== "object" || values === null) return values;
+  const { watched, ...rest } = values as Record<string, unknown>;
+  return { ...rest, view: viewFromWatched(watched) };
+}

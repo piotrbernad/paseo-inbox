@@ -1,6 +1,6 @@
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { Pressable, Text, View } from "react-native";
-import { lastActivity, type Message, nextWatched, partyName, receiptOf } from "../shared/message.ts";
+import { lastActivity, type Message, type PartyEntry, partyName, receiptOf } from "../shared/message.ts";
 import type { ListOutput } from "../shared/rpc.ts";
 import { ago } from "./format.ts";
 import type { Styles } from "./styles.ts";
@@ -59,11 +59,14 @@ export function MessageList(props: {
   data: ListOutput;
   styles: Styles;
   selectedId: string | null;
+  // The chosen person or agent, null for all.
+  viewLabel: string | null;
   onSelect(id: string): void;
 }) {
-  const { messages, data, styles, selectedId, onSelect } = props;
+  const { messages, data, styles, selectedId, viewLabel, onSelect } = props;
   if (messages.length === 0) {
-    return <Text style={styles.empty}>Nothing here from the people and agents you watch in the last 7 days.</Text>;
+    const whose = viewLabel === null ? "" : ` from or to ${viewLabel}`;
+    return <Text style={styles.empty}>No messages{whose} in the last 7 days.</Text>;
   }
   return (
     <View>
@@ -81,37 +84,37 @@ export function MessageList(props: {
   );
 }
 
+// One choice: all messages, or those of one person or standing agent.
 export function PartiesPanel(props: {
-  data: ListOutput;
-  watched: readonly string[];
+  choices: readonly PartyEntry[];
+  view: string;
   styles: Styles;
   disabled: boolean;
-  onChange(watched: string[]): void;
+  onChange(view: string): void;
 }) {
-  const { data, watched, styles, disabled, onChange } = props;
-  const keys = data.parties.map((p) => p.key);
-  const all = watched.length === 0;
-  const chip = (key: string, label: string, on: boolean, onPress: () => void) => (
-    <Pressable
-      key={key}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: on, disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={[styles.chip, on && styles.chipOn]}
-    >
-      {on ? <Icon name="Check" size={12} color={styles.colors.accentForeground} /> : null}
-      <Text style={on ? styles.chipTextOn : styles.chipText}>{label}</Text>
-    </Pressable>
-  );
+  const { choices, view, styles, disabled, onChange } = props;
+  const chip = (key: string, label: string) => {
+    const on = key === view;
+    return (
+      <Pressable
+        key={key}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: on, disabled }}
+        disabled={disabled}
+        onPress={() => onChange(key)}
+        style={[styles.chip, on && styles.chipOn]}
+      >
+        {on ? <Icon name="Check" size={12} color={styles.colors.accentForeground} /> : null}
+        <Text style={on ? styles.chipTextOn : styles.chipText}>{label}</Text>
+      </Pressable>
+    );
+  };
   return (
     <View style={{ gap: 8 }}>
       <Text style={styles.sectionTitle}>People & agents</Text>
-      <View style={styles.chips}>
-        {chip("all", "All", all, () => onChange([]))}
-        {data.parties.map((p) =>
-          chip(p.key, p.label, all || watched.includes(p.key), () => onChange(nextWatched(watched, keys, p.key))),
-        )}
+      <View accessibilityRole="radiogroup" style={styles.chips}>
+        {chip("all", "All")}
+        {choices.map((p) => chip(p.key, p.label))}
       </View>
     </View>
   );
