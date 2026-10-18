@@ -30,3 +30,4 @@ paseo-inbox ask --to <person> --title "One decision" --context "2 sentences." --
 - `--fyi` for information that can wait for the recipient's next turn. Without it, an idle recipient is woken.
 - Sending never interrupts the recipient's current work.
 - Ask a person only what you cannot decide or infer yourself.
+- People do not remember your threads. A question names what it is about in their words (feature, screen), says what happened and why a decision is needed now, and each option says what follows from it.
