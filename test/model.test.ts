@@ -20,8 +20,8 @@ import { PEOPLE, tempRoot } from "./helpers.ts";
 const { root, cleanup } = tempRoot("model");
 after(cleanup);
 
-const lead = { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a" } as const;
-const loose = { kind: "agent", role: null, agentId: "loose-1", title: "Spike", host: "host-b" } as const;
+const lead = { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null } as const;
+const loose = { kind: "agent", role: null, agentId: "loose-1", title: "Spike", host: "host-b", parentRole: null } as const;
 
 function message(extra: Partial<Message> = {}): Message {
   return {
@@ -114,7 +114,7 @@ test("party entries list people first, then everyone in the messages, by session
 
 test("a party is shown by its session title, else its role, else its id; current titles replace stored ones", () => {
   const agent = (title: string | null, role: string | null, agentId: string | null) =>
-    ({ kind: "agent", role, agentId, title, host: "host-a" }) as const;
+    ({ kind: "agent", role, agentId, title, host: "host-a", parentRole: null }) as const;
   assert.equal(partyName(agent("EM — Engineering Manager", "em", "a-1"), PEOPLE), "EM — Engineering Manager");
   assert.equal(partyName(agent("  ", "em", "a-1"), PEOPLE), "em");
   assert.equal(partyName(agent(null, null, "a-1"), PEOPLE), "a-1");

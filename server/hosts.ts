@@ -50,6 +50,10 @@ export function paseoConnect(): Connect {
 
 export type Located = { host: string; agent: AgentSnapshot };
 
+// Paseo labels a session started by another agent (MCP create_agent) with that agent's id. Both
+// live on the same daemon.
+export const PARENT_LABEL = "paseo.parent-agent-id";
+
 export function createDirectory(config: Config, connect: Connect) {
   async function on<T>(host: string, fn: (client: HostClient) => Promise<T>): Promise<T> {
     const endpoint = config.hosts[host];
@@ -73,14 +77,25 @@ export function createDirectory(config: Config, connect: Connect) {
     return [first, ...keys.filter((k) => k !== first)];
   }
 
-  function party(located: Located): AgentParty {
+  const roleOf = (agent: AgentSnapshot) => agent.labels?.[config.roleLabel]?.trim() || null;
+
+  // The role of the agent that started this one; null when none started it, or it cannot be found.
+  async function parentRole(located: Located): Promise<string | null> {
+    const parentId = located.agent.labels?.[PARENT_LABEL]?.trim();
+    if (!parentId) return null;
+    const parent = await on(located.host, (client) => client.fetchAgent({ agentId: parentId })).catch(() => null);
+    return parent ? roleOf(parent.agent) : null;
+  }
+
+  async function party(located: Located): Promise<AgentParty> {
     const { agent, host } = located;
     return {
       kind: "agent",
-      role: agent.labels?.[config.roleLabel]?.trim() || null,
+      role: roleOf(agent),
       agentId: agent.id,
       title: agent.title ?? null,
       host,
+      parentRole: await parentRole(located),
     };
   }
 

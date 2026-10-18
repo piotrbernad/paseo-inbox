@@ -21,6 +21,10 @@ export const AgentPartySchema = z
     agentId: z.string().min(1).nullable(),
     title: z.string().nullable(),
     host: z.string().min(1),
+    // The role of the agent that started this session (its Paseo parent), recorded at send time.
+    // Its messages show under that role. Null for a session nobody started, or one recorded before
+    // this existed.
+    parentRole: z.string().min(1).nullable().default(null),
   })
   .refine((p) => p.role !== null || p.agentId !== null, "An agent party needs a role or an agent id.");
 export type AgentParty = z.infer<typeof AgentPartySchema>;

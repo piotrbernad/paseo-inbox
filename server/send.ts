@@ -106,7 +106,7 @@ type Deps = { config: Config; directory: Directory; store: Store | null; now?: (
 export async function send(deps: Deps, input: SendInput): Promise<Sent> {
   const now = deps.now?.() ?? new Date();
   const located = await resolveRecipient(deps.directory, input.to);
-  const to = deps.directory.party(located);
+  const to = await deps.directory.party(located);
   const id = deps.store ? newMessageId(input.from, now) : null;
   const mode = deliveryMode({
     hookHost: deps.config.hookHosts.includes(located.host),
@@ -170,7 +170,7 @@ export async function deliverAnswer(
   });
   if (mode === "message") {
     const from: Party = { kind: "person", person: question.question.state.by };
-    const to = deps.directory.party(located);
+    const to = await deps.directory.party(located);
     const text = `${header({ id: null, from, to, ref: question.ref, inReplyTo: question.id }, deps.config)}\n\n${answerText(question)}`;
     await deps.directory.steer(located, text);
   } else if (mode === "wake") {

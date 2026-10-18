@@ -17,7 +17,7 @@ function question(to: string, title: string, extra: { ref?: string; state?: Ques
   return {
     version: 1,
     id: `20261017-1200-lead-${String(counter).padStart(4, "0")}`,
-    from: { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a" },
+    from: { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null },
     to: { kind: "person", person: to },
     ref: extra.ref ?? null,
     inReplyTo: null,

@@ -491,18 +491,19 @@ async function sender(fromArg: string | undefined, ctx: Ctx, opts: { allowPerson
   }
   const agentId = io.env.PASEO_AGENT_ID?.trim() || null;
   const self = agentId ? await directory.self(agentId).catch(() => null) : null;
-  const role = fromArg ?? (self?.agent.labels?.[config.roleLabel]?.trim() || null);
+  const known = self ? await directory.party(self) : null;
+  const role = fromArg ?? known?.role ?? null;
   if (role === null && agentId === null) {
     throw new UsageError("Pass --from ROLE, or run inside a Paseo agent (PASEO_AGENT_ID).");
   }
-  return { kind: "agent", role, agentId, title: self?.agent.title ?? null, host: config.self };
+  return { kind: "agent", role, agentId, title: known?.title ?? null, host: config.self, parentRole: known?.parentRole ?? null };
 }
 
 function recipient(arg: string, config: Config): Recipient {
   if (arg.startsWith("agent:")) {
     const agentId = arg.slice("agent:".length);
     if (!agentId) throw new UsageError("agent: needs an agent id.");
-    return { kind: "party", party: { kind: "agent", role: null, agentId, title: null, host: config.self } };
+    return { kind: "party", party: { kind: "agent", role: null, agentId, title: null, host: config.self, parentRole: null } };
   }
   const person = arg.startsWith("person:") ? arg.slice("person:".length) : arg;
   if (config.people.some((p) => p.id === person)) {

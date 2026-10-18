@@ -161,7 +161,8 @@ One file per message, `messages/<id>.json`, validated with the zod schema in `sh
 ```ts
 type Party =
   | { kind: "person"; person: string }
-  | { kind: "agent"; role: string | null; agentId: string | null; title: string | null; host: string };
+  | { kind: "agent"; role: string | null; agentId: string | null; title: string | null; host: string;
+      parentRole: string | null }; // role of the agent that started this session, null when none or unknown
 
 type Message = {
   version: 1;

@@ -38,7 +38,7 @@ function message(id: string, body: string): Message {
   return {
     version: 1,
     id,
-    from: { kind: "agent", role: "lead", agentId: "lead-1", title: null, host: "host-a" },
+    from: { kind: "agent", role: "lead", agentId: "lead-1", title: null, host: "host-a", parentRole: null },
     to: { kind: "person", person: "alice" },
     ref: null,
     inReplyTo: null,

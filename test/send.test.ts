@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { PARENT_LABEL } from "../server/hosts.ts";
 import { type Message, MessageSchema } from "../shared/message.ts";
 import { bareRemote, cli, fakeHosts, git, remoteFile, tempRoot, writeConfig } from "./helpers.ts";
 
@@ -15,10 +16,13 @@ const hosts = fakeHosts({
   "host-a": [
     { id: "lead-1", title: "Lead", labels: { "team-role": "lead" } },
     { id: "loose-1", title: "Spike on caching", labels: {} },
+    { id: "lead-child", title: "Migration spike", labels: { [PARENT_LABEL]: "lead-1" } },
+    { id: "orphan", title: "Leftover", labels: { [PARENT_LABEL]: "gone-1" } },
   ],
   "host-b": [
     { id: "designer-old", title: "Designer (old)", labels: { "team-role": "designer" }, archivedAt: "2026-10-01T00:00:00Z" },
     { id: "designer-1", title: "Designer", labels: { "team-role": "designer" } },
+    { id: "designer-child", title: "Icon pass", labels: { [PARENT_LABEL]: "designer-old" } },
   ],
 });
 const asA = hosts.connectAs("host-a");
@@ -58,8 +62,8 @@ test("send steers the recipient on another host, then records both agent ids", a
   );
 
   const message = stored(id);
-  assert.deepEqual(message.from, { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a" });
-  assert.deepEqual(message.to, { kind: "agent", role: "designer", agentId: "designer-1", title: "Designer", host: "host-b" });
+  assert.deepEqual(message.from, { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null });
+  assert.deepEqual(message.to, { kind: "agent", role: "designer", agentId: "designer-1", title: "Designer", host: "host-b", parentRole: null });
   assert.equal(message.body, "Please review the header.");
   assert.equal(message.inReplyTo, null);
   assert.equal(message.question, null);
@@ -115,12 +119,29 @@ test("an agent without a role is addressed by id, and replies reach it by id", a
   assert.match(id, /-agent-[a-z0-9]{4}$/);
   assert.match(hosts.steered.at(-1)?.text ?? "", /\nReply: paseo-inbox send --from designer agent:loose-1 --re /);
   const message = stored(id);
-  assert.deepEqual(message.from, { kind: "agent", role: null, agentId: "loose-1", title: "Spike on caching", host: "host-a" });
+  assert.deepEqual(message.from, { kind: "agent", role: null, agentId: "loose-1", title: "Spike on caching", host: "host-a", parentRole: null });
 
   const reply = await cli(configB, asB, ["send", "agent:loose-1", "--re", id, "Use the CDN."], { PASEO_AGENT_ID: "designer-1" });
   assert.equal(reply.code, 0, reply.err);
   assert.equal(hosts.steered.at(-1)?.agentId, "loose-1");
   assert.equal(hosts.steered.at(-1)?.host, "host-a");
+});
+
+test("send records the role of the agent that started the sender's and the recipient's session", async () => {
+  const sent = await cli(configA, asA, ["send", "agent:designer-child", "Which icon set?"], { PASEO_AGENT_ID: "lead-child" });
+  assert.equal(sent.code, 0, sent.err);
+  const message = stored(sent.out.split(" ")[1]);
+  assert.deepEqual(message.from, {
+    kind: "agent", role: null, agentId: "lead-child", title: "Migration spike", host: "host-a", parentRole: "lead",
+  });
+  assert.equal(message.to.kind === "agent" && message.to.parentRole, "designer", "an archived parent still names its role");
+  assert.equal(message.to.kind === "agent" && message.to.title, "Icon pass", "the party is still the session");
+
+  const orphan = await cli(configA, asA, ["send", "lead", "Done here."], { PASEO_AGENT_ID: "orphan" });
+  assert.equal(orphan.code, 0, orphan.err);
+  const fromOrphan = stored(orphan.out.split(" ")[1]);
+  assert.equal(fromOrphan.from.kind === "agent" && fromOrphan.from.parentRole, null, "an unknown parent is null");
+  assert.equal(fromOrphan.to.kind === "agent" && fromOrphan.to.parentRole, null, "a standing agent has no parent");
 });
 
 test("failures: unknown role, a person as recipient, no sender identity, unreachable host", async () => {
