@@ -62,6 +62,8 @@ export function writeConfig(
   return path;
 }
 
+export const serverIdOf = (host: string) => `server-${host}`;
+
 export type Steered = { host: string; agentId: string; text: string; options: unknown };
 
 // In-memory Paseo hosts. Each config reaches its own host as "local" and the other as "link-<x>".
@@ -86,6 +88,7 @@ export function fakeHosts(agents: Record<"host-a" | "host-b", AgentSnapshot[]>) 
           if (!list.some((a) => a.id === agentId)) throw new Error(`Agent not found: ${agentId}`);
           steered.push({ host, agentId, text, options });
         },
+        getLastServerInfoMessage: () => ({ serverId: serverIdOf(host) }),
         async close() {},
       };
       return client;

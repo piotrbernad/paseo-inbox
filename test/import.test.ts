@@ -48,7 +48,7 @@ test("import-questions maps the earlier format and is idempotent", async () => {
   assert.deepEqual(message, {
     version: 1,
     id: "20261017-1000-lead-aaaa",
-    from: { kind: "agent", role: "lead", agentId: null, title: null, host: "host-a", parentRole: null },
+    from: { kind: "agent", role: "lead", agentId: null, title: null, host: "host-a", parentRole: null, serverId: null },
     to: { kind: "person", person: "alice" },
     ref: "REF-1",
     inReplyTo: null,

@@ -25,6 +25,9 @@ export const AgentPartySchema = z
     // Its messages show under that role. Null for a session nobody started, or one recorded before
     // this existed.
     parentRole: z.string().min(1).nullable().default(null),
+    // The Paseo server id of the agent's daemon, recorded at send time, so a viewer paired with that
+    // daemon can open the session. Null when the daemon did not say, or recorded before this existed.
+    serverId: z.string().min(1).nullable().default(null),
   })
   .refine((p) => p.role !== null || p.agentId !== null, "An agent party needs a role or an agent id.");
 export type AgentParty = z.infer<typeof AgentPartySchema>;
@@ -168,6 +171,15 @@ function retitled<P extends Party>(party: P, titles: Titles): P {
 // The message as shown: its parties carry their current session titles where known.
 export function withTitles<M extends Message>(message: M, titles: Titles): M {
   return { ...message, from: retitled(message.from, titles), to: retitled(message.to, titles) };
+}
+
+// The session a viewer can open: the agent's id on a daemon the viewer's app is paired with.
+export function openableSession(
+  party: Party,
+  pairedServerIds: ReadonlySet<string>,
+): { agentId: string; serverId: string } | null {
+  if (party.kind !== "agent" || party.agentId === null || party.serverId === null) return null;
+  return pairedServerIds.has(party.serverId) ? { agentId: party.agentId, serverId: party.serverId } : null;
 }
 
 export function agentsIn(messages: readonly Message[]): AgentParty[] {

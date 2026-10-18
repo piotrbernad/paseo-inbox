@@ -1,8 +1,16 @@
-import { useRpc } from "@getpaseo/plugin/client";
-import { TextInput } from "@getpaseo/plugin/client/react-native";
+import { type PluginScreenProps, useHosts, useRpc } from "@getpaseo/plugin/client";
+import { Icon, TextInput } from "@getpaseo/plugin/client/react-native";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { type Answered, type Message, partyName, type QuestionMessage, receiptOf } from "../shared/message.ts";
+import {
+  type Answered,
+  type Message,
+  openableSession,
+  type Party,
+  partyName,
+  type QuestionMessage,
+  receiptOf,
+} from "../shared/message.ts";
 import { answerRpc, type ListOutput, retryDeliveryRpc } from "../shared/rpc.ts";
 import { personName, useResultMutation } from "./data.ts";
 import { ago, clock, when } from "./format.ts";
@@ -12,13 +20,19 @@ import type { Styles } from "./styles.ts";
 
 const STUCK_PENDING_MS = 2 * 60 * 1000;
 
+// Absent on Paseo hosts older than screen navigation.
+type OpenAgent = NonNullable<PluginScreenProps["navigation"]>["openAgent"] | undefined;
+
 export function Detail(props: {
   message: Message;
   data: ListOutput;
   styles: Styles;
   onSelect(id: string): void;
+  openAgent: OpenAgent;
 }) {
-  const { message, data, styles, onSelect } = props;
+  const { message, data, styles, onSelect, openAgent } = props;
+  const hosts = useHosts();
+  const paired = new Set(hosts.map((h) => h.serverId));
   const parent = message.inReplyTo ? data.messages.find((m) => m.id === message.inReplyTo) : undefined;
   const replies = data.messages.filter((m) => m.inReplyTo === message.id).reverse();
 
@@ -26,9 +40,8 @@ export function Detail(props: {
     <View style={{ gap: styles.gap }}>
       <View style={{ gap: 4 }}>
         {message.question ? <Text style={styles.title}>{message.question.title}</Text> : null}
-        <Text style={styles.muted}>
-          {partyName(message.from, data.people)} → {partyName(message.to, data.people)}
-        </Text>
+        <PartyLine label="From" party={message.from} data={data} styles={styles} paired={paired} openAgent={openAgent} />
+        <PartyLine label="To" party={message.to} data={data} styles={styles} paired={paired} openAgent={openAgent} />
         <Text style={styles.small}>
           {[message.ref, `${when(message.sentAt)} (${ago(message.sentAt)})`, message.id].filter(Boolean).join(" · ")}
         </Text>
@@ -54,6 +67,39 @@ export function Detail(props: {
             ))}
           </View>
         </View>
+      ) : null}
+    </View>
+  );
+}
+
+// A party by name; an agent also by its host, with a button that opens its session when this app
+// is paired with the agent's daemon.
+function PartyLine(props: {
+  label: string;
+  party: Party;
+  data: ListOutput;
+  styles: Styles;
+  paired: ReadonlySet<string>;
+  openAgent: OpenAgent;
+}) {
+  const { label, party, data, styles, paired, openAgent } = props;
+  const session = openableSession(party, paired);
+  return (
+    <View style={styles.partyLine}>
+      <Text style={styles.muted}>
+        {label} <Text style={styles.text}>{partyName(party, data.people)}</Text>
+        {party.kind === "agent" ? ` on ${party.host}` : ""}
+      </Text>
+      {session && openAgent ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open session ${partyName(party, data.people)}`}
+          onPress={() => openAgent(session)}
+          style={styles.buttonSmall}
+        >
+          <Icon name="ArrowUpRight" size={14} color={styles.colors.foreground} />
+          <Text style={styles.chipText}>Open session</Text>
+        </Pressable>
       ) : null}
     </View>
   );

@@ -43,7 +43,7 @@ before(async () => {
 
 after(cleanup);
 
-test("send steers the recipient on another host, then records both agent ids", async () => {
+test("send steers the recipient on another host, then records both agent ids and their daemons' server ids", async () => {
   const sent = await cli(configA, asA, ["send", "--from", "lead", "designer", "Please", "review", "the", "header."], {
     PASEO_AGENT_ID: "lead-1",
   });
@@ -62,8 +62,8 @@ test("send steers the recipient on another host, then records both agent ids", a
   );
 
   const message = stored(id);
-  assert.deepEqual(message.from, { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null });
-  assert.deepEqual(message.to, { kind: "agent", role: "designer", agentId: "designer-1", title: "Designer", host: "host-b", parentRole: null });
+  assert.deepEqual(message.from, { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null, serverId: "server-host-a" });
+  assert.deepEqual(message.to, { kind: "agent", role: "designer", agentId: "designer-1", title: "Designer", host: "host-b", parentRole: null, serverId: "server-host-b" });
   assert.equal(message.body, "Please review the header.");
   assert.equal(message.inReplyTo, null);
   assert.equal(message.question, null);
@@ -119,7 +119,7 @@ test("an agent without a role is addressed by id, and replies reach it by id", a
   assert.match(id, /-agent-[a-z0-9]{4}$/);
   assert.match(hosts.steered.at(-1)?.text ?? "", /\nReply: paseo-inbox send --from designer agent:loose-1 --re /);
   const message = stored(id);
-  assert.deepEqual(message.from, { kind: "agent", role: null, agentId: "loose-1", title: "Spike on caching", host: "host-a", parentRole: null });
+  assert.deepEqual(message.from, { kind: "agent", role: null, agentId: "loose-1", title: "Spike on caching", host: "host-a", parentRole: null, serverId: "server-host-a" });
 
   const reply = await cli(configB, asB, ["send", "agent:loose-1", "--re", id, "Use the CDN."], { PASEO_AGENT_ID: "designer-1" });
   assert.equal(reply.code, 0, reply.err);
@@ -132,7 +132,7 @@ test("send records the role of the agent that started the sender's and the recip
   assert.equal(sent.code, 0, sent.err);
   const message = stored(sent.out.split(" ")[1]);
   assert.deepEqual(message.from, {
-    kind: "agent", role: null, agentId: "lead-child", title: "Migration spike", host: "host-a", parentRole: "lead",
+    kind: "agent", role: null, agentId: "lead-child", title: "Migration spike", host: "host-a", parentRole: "lead", serverId: "server-host-a",
   });
   assert.equal(message.to.kind === "agent" && message.to.parentRole, "designer", "an archived parent still names its role");
   assert.equal(message.to.kind === "agent" && message.to.title, "Icon pass", "the party is still the session");

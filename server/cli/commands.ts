@@ -502,14 +502,22 @@ async function sender(fromArg: string | undefined, ctx: Ctx, opts: { allowPerson
   if (role === null && agentId === null) {
     throw new UsageError("Pass --from ROLE, or run inside a Paseo agent (PASEO_AGENT_ID).");
   }
-  return { kind: "agent", role, agentId, title: known?.title ?? null, host: config.self, parentRole: known?.parentRole ?? null };
+  return {
+    kind: "agent",
+    role,
+    agentId,
+    title: known?.title ?? null,
+    host: config.self,
+    parentRole: known?.parentRole ?? null,
+    serverId: known?.serverId ?? null,
+  };
 }
 
 function recipient(arg: string, config: Config): Recipient {
   if (arg.startsWith("agent:")) {
     const agentId = arg.slice("agent:".length);
     if (!agentId) throw new UsageError("agent: needs an agent id.");
-    return { kind: "party", party: { kind: "agent", role: null, agentId, title: null, host: config.self, parentRole: null } };
+    return { kind: "party", party: { kind: "agent", role: null, agentId, title: null, host: config.self, parentRole: null, serverId: null } };
   }
   const person = arg.startsWith("person:") ? arg.slice("person:".length) : arg;
   if (config.people.some((p) => p.id === person)) {

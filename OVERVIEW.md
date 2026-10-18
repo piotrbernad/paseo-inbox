@@ -18,6 +18,7 @@ The command line tool runs on macOS with Paseo.app installed, using the Node run
 
 - People & agents: show all messages, or those of one person or standing agent, including the sessions that agent started. The choice is remembered.
 - Messages: open questions and everything from the last 7 days, newest first, with the reply thread of each message.
+- Each message shows which session sent it, and which received it, on which host, with Open session to jump to it in Paseo when this app is paired with that host.
 - Links open in the browser, and links to images show as previews you tap to open.
 - Answers: pick an option, write text, or both. The delivery state shows under the answer, with Send again when delivery failed.
 - Read receipts: a dot marks messages their agent has not read yet; an opened message says when its agent read it.

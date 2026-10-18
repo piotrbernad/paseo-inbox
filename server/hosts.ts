@@ -17,6 +17,8 @@ export interface HostClient {
   fetchAgents(options: { filter: { labels: Record<string, string> } }): Promise<{ entries: { agent: AgentSnapshot }[] }>;
   fetchAgent(options: { agentId: string }): Promise<{ agent: AgentSnapshot } | null>;
   sendAgentMessage(agentId: string, text: string, options: { activeTurnBehavior: "steer" }): Promise<unknown>;
+  // Set once the connection is up; the daemon introduces itself with its server id.
+  getLastServerInfoMessage(): { serverId: string } | null;
   close(): Promise<unknown>;
 }
 
@@ -48,7 +50,10 @@ export function paseoConnect(): Connect {
   };
 }
 
-export type Located = { host: string; agent: AgentSnapshot };
+// An agent and where it runs: the config host name and that daemon's server id.
+export type Located = { host: string; serverId: string | null; agent: AgentSnapshot };
+
+const serverIdOf = (client: HostClient) => client.getLastServerInfoMessage()?.serverId ?? null;
 
 // Paseo labels a session started by another agent (MCP create_agent) with that agent's id. Both
 // live on the same daemon.
@@ -66,9 +71,9 @@ export function createDirectory(config: Config, connect: Connect) {
     }
   }
 
-  async function fetchLive(client: HostClient, agentId: string): Promise<AgentSnapshot | null> {
+  async function fetchLive(host: string, client: HostClient, agentId: string): Promise<Located | null> {
     const found = await client.fetchAgent({ agentId }).catch(() => null);
-    return found && !found.agent.archivedAt ? found.agent : null;
+    return found && !found.agent.archivedAt ? { host, serverId: serverIdOf(client), agent: found.agent } : null;
   }
 
   function hostOrder(prefer?: string): string[] {
@@ -88,7 +93,7 @@ export function createDirectory(config: Config, connect: Connect) {
   }
 
   async function party(located: Located): Promise<AgentParty> {
-    const { agent, host } = located;
+    const { agent, host, serverId } = located;
     return {
       kind: "agent",
       role: roleOf(agent),
@@ -96,6 +101,7 @@ export function createDirectory(config: Config, connect: Connect) {
       title: agent.title ?? null,
       host,
       parentRole: await parentRole(located),
+      serverId,
     };
   }
 
@@ -107,11 +113,12 @@ export function createDirectory(config: Config, connect: Connect) {
       const unreachable: string[] = [];
       for (const host of hostOrder()) {
         try {
-          const agent = await on(host, async (client) => {
+          const found = await on(host, async (client) => {
             const { entries } = await client.fetchAgents({ filter: { labels: { [config.roleLabel]: role } } });
-            return entries.map((e) => e.agent).find((a) => !a.archivedAt && a.labels?.[config.roleLabel] === role);
+            const agent = entries.map((e) => e.agent).find((a) => !a.archivedAt && a.labels?.[config.roleLabel] === role);
+            return agent ? { host, serverId: serverIdOf(client), agent } : null;
           });
-          if (agent) return { host, agent };
+          if (found) return found;
         } catch (error) {
           unreachable.push(`${host} (${error instanceof Error ? error.message : String(error)})`);
         }
@@ -122,15 +129,14 @@ export function createDirectory(config: Config, connect: Connect) {
 
     async findAgent(agentId: string, preferHost?: string): Promise<Located | null> {
       for (const host of hostOrder(preferHost)) {
-        const agent = await on(host, (client) => fetchLive(client, agentId)).catch(() => null);
-        if (agent) return { host, agent };
+        const found = await on(host, (client) => fetchLive(host, client, agentId)).catch(() => null);
+        if (found) return found;
       }
       return null;
     },
 
     async self(agentId: string): Promise<Located | null> {
-      const agent = await on(config.self, (client) => fetchLive(client, agentId));
-      return agent ? { host: config.self, agent } : null;
+      return on(config.self, (client) => fetchLive(config.self, client, agentId));
     },
 
     // The current session titles of these agents, one connection per host. Agents on hosts that

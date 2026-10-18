@@ -38,7 +38,7 @@ export function InboxSidebarItem({ host, theme, currentScreen, openScreen }: Plu
   );
 }
 
-export function InboxScreen({ host, theme, layout }: PluginScreenProps) {
+export function InboxScreen({ host, theme, layout, navigation }: PluginScreenProps) {
   const styles = useMemo(() => makeStyles(theme, layout.compact), [theme, layout.compact]);
   const { data, error, isPending } = useInbox(host.id);
   const settings = useSettings(inboxSettings);
@@ -84,7 +84,9 @@ export function InboxScreen({ host, theme, layout }: PluginScreenProps) {
     />
   );
   const notices = <Notices data={data} styles={styles} />;
-  const detail = selected ? <Detail message={selected} data={data} styles={styles} onSelect={setSelectedId} /> : null;
+  const detail = selected ? (
+    <Detail message={selected} data={data} styles={styles} onSelect={setSelectedId} openAgent={navigation?.openAgent} />
+  ) : null;
 
   if (layout.compact) {
     if (detail) {

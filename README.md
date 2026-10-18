@@ -159,6 +159,7 @@ The **Inbox** screen lists open questions and everything from the last 7 days, n
 
 - Choose whose messages to see under **People & agents**: **All**, or one person or standing agent (an agent with the role label). A standing agent's messages include those of the sessions it started (Paseo's `paseo.parent-agent-id` label, recorded as `parentRole` when a message is sent). The choice is remembered on the host. On a narrow screen the filter button shows the current choice.
 - Open a message for its thread: the message it replies to and the replies to it.
+- A message shows the session that sent it and, for an agent recipient, the session it went to, each with its host. **Open session** opens that session in Paseo. It shows when the agent's daemon was recorded with the message (`serverId`) and this app is paired with that daemon; otherwise the session name and host are plain text.
 - Links in a message, a question's context and an answer open in the browser. A link to an image (a path ending in `.png`, `.jpg`, `.jpeg`, `.webp` or `.gif`, or a GitHub attachment) also shows as a preview below the text; tapping it opens the full image. A GitHub `blob` link to an image is previewed from its `raw` address.
 - Answer an open question by picking an option, writing text, or both. The answer is saved in the question and delivered to the agent that asked. A failed delivery shows **Send again**.
 - A dot marks a message its agent has not read yet; the message itself says when it was read and by which session.
@@ -173,7 +174,8 @@ One file per message, `messages/<id>.json`, validated with the zod schema in `sh
 type Party =
   | { kind: "person"; person: string }
   | { kind: "agent"; role: string | null; agentId: string | null; title: string | null; host: string;
-      parentRole: string | null }; // role of the agent that started this session, null when none or unknown
+      parentRole: string | null; // role of the agent that started this session, null when none or unknown
+      serverId: string | null }; // Paseo server id of the agent's daemon, null when unknown
 
 type Message = {
   version: 1;

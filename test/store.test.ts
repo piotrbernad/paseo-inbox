@@ -94,7 +94,7 @@ test("an agent asks on host A, Bob answers on host B, the answer is delivered an
   assert.equal(listed.syncError, null);
   const message = listed.messages.find((m) => m.id === id);
   assert.ok(message?.question, "host B sees the question asked on host A");
-  assert.deepEqual(message.from, { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null });
+  assert.deepEqual(message.from, { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null, serverId: "server-host-a" });
   assert.deepEqual(message.to, { kind: "person", person: "bob" });
   assert.equal(message.ref, "REF-12");
   assert.equal(message.body, "Two variants in the mockup.\nBoth pass contrast.");

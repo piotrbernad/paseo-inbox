@@ -7,6 +7,7 @@ import {
   isRecent,
   type Message,
   MessageSchema,
+  openableSession,
   partyEntries,
   partyKey,
   partyName,
@@ -22,10 +23,10 @@ import { PEOPLE, tempRoot } from "./helpers.ts";
 const { root, cleanup } = tempRoot("model");
 after(cleanup);
 
-const lead = { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null } as const;
-const loose = { kind: "agent", role: null, agentId: "loose-1", title: "Spike", host: "host-b", parentRole: null } as const;
+const lead = { kind: "agent", role: "lead", agentId: "lead-1", title: "Lead", host: "host-a", parentRole: null, serverId: null } as const;
+const loose = { kind: "agent", role: null, agentId: "loose-1", title: "Spike", host: "host-b", parentRole: null, serverId: null } as const;
 // A session the designer started.
-const child = { kind: "agent", role: null, agentId: "child-1", title: "Icon pass", host: "host-b", parentRole: "designer" } as const;
+const child = { kind: "agent", role: null, agentId: "child-1", title: "Icon pass", host: "host-b", parentRole: "designer", serverId: null } as const;
 
 function message(extra: Partial<Message> = {}): Message {
   return {
@@ -75,6 +76,22 @@ test("a standing agent's view includes the sessions it started, from either side
   assert.equal(old.to.kind === "agent" && old.to.parentRole, null, "messages from before parentRole parse as null");
   assert.equal(inView(old, "role:designer"), false);
   assert.equal(inView(old, "all"), true);
+});
+
+test("messages from before serverId parse as null, and only paired daemons' sessions open", () => {
+  const { serverId: _, ...oldLead } = lead;
+  const old = MessageSchema.parse({ ...message({ from: lead, to: loose }), from: oldLead });
+  assert.equal(old.from.kind === "agent" && old.from.serverId, null);
+  assert.equal(openableSession(old.from, new Set(["server-host-a"])), null, "no server id, nothing to open");
+
+  const recorded = { ...lead, serverId: "server-host-a" };
+  assert.deepEqual(openableSession(recorded, new Set(["server-host-a", "server-host-b"])), {
+    agentId: "lead-1",
+    serverId: "server-host-a",
+  });
+  assert.equal(openableSession(recorded, new Set(["server-host-b"])), null, "the viewer is not paired with that daemon");
+  assert.equal(openableSession({ ...recorded, agentId: null, role: "lead" }, new Set(["server-host-a"])), null);
+  assert.equal(openableSession({ kind: "person", person: "alice" }, new Set(["server-host-a"])), null);
 });
 
 test("open questions stay; everything else drops off after seven days of quiet", () => {
@@ -144,7 +161,7 @@ test("the choices are people, then standing agents sorted by session name; sessi
 
 test("a party is shown by its session title, else its role, else its id; current titles replace stored ones", () => {
   const agent = (title: string | null, role: string | null, agentId: string | null) =>
-    ({ kind: "agent", role, agentId, title, host: "host-a", parentRole: null }) as const;
+    ({ kind: "agent", role, agentId, title, host: "host-a", parentRole: null, serverId: null }) as const;
   assert.equal(partyName(agent("EM — Engineering Manager", "em", "a-1"), PEOPLE), "EM — Engineering Manager");
   assert.equal(partyName(agent("  ", "em", "a-1"), PEOPLE), "em");
   assert.equal(partyName(agent(null, null, "a-1"), PEOPLE), "a-1");
