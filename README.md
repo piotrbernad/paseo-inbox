@@ -145,8 +145,9 @@ Paste something like this into your agents' instructions:
 Talk to other agents with `paseo-inbox send --from <your role> <their role> "message"`.
 Keep messages under 200 characters; put details in a PR, ticket or file and send the link.
 When told that messages wait, run `paseo-inbox read`; reply with the command it prints.
-Ask a person with `paseo-inbox ask --from <your role> --to <person> --title "one line"
---context "two or three sentences" --option "A: ..." --option "B: ..." --recommend A`.
+Ask a person one decision with `paseo-inbox ask --from <your role> --to <person> --ref <ticket>
+--title "the decision, in their words" --context "what it is about, what happened, why now"
+--option "A: ..." --option "B: ..." --recommend A`. Link files with https://, never local paths.
 Then keep working on what does not depend on the answer; it arrives as a message.
 Use --fyi for messages that do not need the recipient to act.
 Do not ask people in chat messages. Withdraw a question that no longer matters.
@@ -158,6 +159,7 @@ The **Inbox** screen lists open questions and everything from the last 7 days, n
 
 - Choose whose messages to see under **People & agents**: **All**, or one person or standing agent (an agent with the role label). A standing agent's messages include those of the sessions it started (Paseo's `paseo.parent-agent-id` label, recorded as `parentRole` when a message is sent). The choice is remembered on the host. On a narrow screen the filter button shows the current choice.
 - Open a message for its thread: the message it replies to and the replies to it.
+- Links in a message, a question's context and an answer open in the browser. A link to an image (a path ending in `.png`, `.jpg`, `.jpeg`, `.webp` or `.gif`, or a GitHub attachment) also shows as a preview below the text; tapping it opens the full image. A GitHub `blob` link to an image is previewed from its `raw` address.
 - Answer an open question by picking an option, writing text, or both. The answer is saved in the question and delivered to the agent that asked. A failed delivery shows **Send again**.
 - A dot marks a message its agent has not read yet; the message itself says when it was read and by which session.
 

@@ -6,6 +6,7 @@ import { type Answered, type Message, partyName, type QuestionMessage, receiptOf
 import { answerRpc, type ListOutput, retryDeliveryRpc } from "../shared/rpc.ts";
 import { personName, useResultMutation } from "./data.ts";
 import { ago, clock, when } from "./format.ts";
+import { ImagePreviews, LinkedText } from "./linked-text.tsx";
 import { MessageRow } from "./list.tsx";
 import type { Styles } from "./styles.ts";
 
@@ -34,9 +35,10 @@ export function Detail(props: {
         <ReadReceipt message={message} data={data} styles={styles} />
       </View>
       {message.body !== "" ? (
-        <Text selectable style={styles.text}>
-          {message.body}
-        </Text>
+        <>
+          <LinkedText text={message.body} style={styles.text} styles={styles} />
+          <ImagePreviews text={message.body} styles={styles} />
+        </>
       ) : null}
       {message.question ? <QuestionPanel message={message} data={data} styles={styles} /> : null}
       {message.inReplyTo && !parent ? (
@@ -172,11 +174,7 @@ function AnswerCard(props: { message: QuestionMessage; state: Answered; data: Li
           {option ? ` (${option.text})` : ""}
         </Text>
       ) : null}
-      {state.text !== "" ? (
-        <Text selectable style={styles.text}>
-          {state.text}
-        </Text>
-      ) : null}
+      {state.text !== "" ? <LinkedText text={state.text} style={styles.text} styles={styles} /> : null}
       <Text style={delivery.kind === "failed" ? styles.danger : delivery.kind === "delivered" ? styles.success : styles.small}>
         {delivery.kind === "delivered"
           ? `Delivered to ${asker} ${when(delivery.at)}`
