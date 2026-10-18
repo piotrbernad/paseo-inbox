@@ -20,7 +20,7 @@ paseo-inbox send EM "Short, concrete message, max 200 characters."
 paseo-inbox send EM --re <ID> "Reply to message <ID>."
 paseo-inbox send agent:<AGENT_ID> --ref GUN-123 "To a session without a role."
 paseo-inbox send EM --fyi "Information that should not wake EM."
-paseo-inbox ask --to <person> --title "One decision" --context "2 sentences." --option "A: …" --option "B: …" --recommend A
+paseo-inbox ask --to <person> --ref GUN-123 --title "The decision, in their words" --context "What it is about, what happened, why now." --option "A: … (what follows)" --option "B: …" --recommend A
 ```
 
 - At most 200 characters. Put details in a PR, ticket comment or file and send the link.
@@ -29,5 +29,15 @@ paseo-inbox ask --to <person> --title "One decision" --context "2 sentences." --
 - Do not reply to an `--fyi` message unless you need something. A reply to it does not wake its sender either.
 - `--fyi` for information that can wait for the recipient's next turn. Without it, an idle recipient is woken.
 - Sending never interrupts the recipient's current work.
-- Ask a person only what you cannot decide or infer yourself.
-- People do not remember your threads. A question names what it is about in their words (feature, screen), says what happened and why a decision is needed now, and each option says what follows from it.
+- Do not ask people in chat messages; use `ask`.
+
+## Asking people
+
+People answer in the Inbox screen, often on a phone, without opening anything else. Ask only what you cannot decide or infer yourself, and make the question complete on its own:
+
+- One decision per question. Five recommendations are five questions, not "A: accept all 5"; `ask` refuses that.
+- Plain words. People do not remember your threads: no internal shorthand, branch names or abbreviations they would have to look up.
+- The title is the decision, as the person would say it ("Three price plans on the pricing page?"). Not the ticket id: that goes in `--ref`; `ask` refuses a title that starts with it.
+- The context (up to 600 characters) says what it is about (feature, screen), what happened, and why a decision is needed now.
+- Each option says what follows from it, not just "yes" or "no".
+- Links as `https://` (a GitHub file, PR or ticket). No local paths: the person cannot open files on your machine; `ask` refuses them. A link to an image (`.png`, `.jpg`, `.webp`, `.gif`, a GitHub attachment) shows as a preview in the Inbox, so link screenshots instead of describing them.
