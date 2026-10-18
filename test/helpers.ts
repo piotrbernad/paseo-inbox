@@ -44,7 +44,7 @@ export function writeConfig(
   self: "host-a" | "host-b",
   remote: string,
   storeDir: string,
-  extra: { hookHosts?: string[]; noticeText?: string; wakeText?: string; maxBodyChars?: number; ackWords?: string[] } = {},
+  extra: { hookHosts?: string[]; noticeText?: string; wakeText?: string; maxBodyChars?: number; maxContextChars?: number; ackWords?: string[] } = {},
   name = `inbox-${self}${extra.hookHosts ? "-hooks" : ""}`,
 ): string {
   const path = join(root, `${name}.json`);

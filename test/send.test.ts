@@ -212,18 +212,45 @@ test("messages are short: send and ask refuse longer text with a hint, and send 
     cli(configA, asA, ["ask", "--from", "lead", "--to", "alice", ...args], { PASEO_AGENT_ID: "lead-1" });
   const title = await ask("--title", "t".repeat(101), "--context", "c");
   assert.match(title.err, /The title is 101 characters; the limit is 100\./);
-  const context = await ask("--title", "T", "--context", "c".repeat(201));
-  assert.match(context.err, /The context is 201 characters; the limit is 200\./);
+  const context = await ask("--title", "T", "--context", "c".repeat(601));
+  assert.match(context.err, /The context is 601 characters; the limit is 600\./);
   const option = await ask("--title", "T", "--context", "c", "--option", "A: ok", "--option", `B: ${"o".repeat(121)}`);
   assert.match(option.err, /Option B is 121 characters; the limit is 120\./);
   for (const r of [title, context, option]) {
     assert.equal(r.code, 1);
     assert.match(r.err, hint);
   }
-  assert.equal((await ask("--title", "t".repeat(100), "--context", "c".repeat(200), "--option", `A: ${"o".repeat(120)}`)).code, 0);
+  assert.equal((await ask("--title", "t".repeat(100), "--context", "c".repeat(600), "--option", `A: ${"o".repeat(120)}`)).code, 0);
 
   assert.equal(commits(), before + 3, "only the three that fit were recorded");
   assert.equal(hosts.steered.length, steered + 2, "refused messages reach no one");
+});
+
+test("ask refuses questions a person cannot decide without opening anything, and records nothing", async () => {
+  const before = commits();
+  const ask = (config: string, ...args: string[]) =>
+    cli(config, asA, ["ask", "--from", "lead", "--to", "alice", ...args], { PASEO_AGENT_ID: "lead-1" });
+  const asked = await ask(
+    configA,
+    "--title", "GUN-368 strony oprogramowania: 5 rekomendacji",
+    "--context", "Projekt: team-notes agents/Design/zalaczniki/gun-368/render (home, cennik).",
+    "--option", "A: przyjmuję wszystkie 5",
+    "--option", "B: zmiany (napisz które)",
+    "--ref", "GUN-368",
+  );
+  assert.equal(asked.code, 1);
+  assert.match(asked.err, /The title starts with GUN-368\. The ref has its own field/);
+  const path = await ask(configA, "--title", "Strony oprogramowania: nowy cennik?", "--context", "Render w agents/Design/render.", "--ref", "GUN-368");
+  assert.match(path.err, /The context names a local path \(agents\/Design\/render\)\. .*link it with https:\/\//);
+  const bundled = await ask(configA, "--title", "Strony oprogramowania: 5 rekomendacji", "--context", "c", "--option", "A: przyjmuję wszystkie 5");
+  assert.match(bundled.err, /Ask one question per decision/);
+  assert.equal(commits(), before, "refused questions are not recorded");
+
+  const linked = await ask(configA, "--title", "Cennik: trzy plany zamiast dwóch?", "--context", "Widok: https://github.com/acme/design/blob/main/render/cennik.png", "--ref", "GUN-368");
+  assert.equal(linked.code, 0, linked.err);
+  const roomy = writeConfig(root, "host-a", remote, dirA, { maxContextChars: 700 }, "inbox-host-a-context");
+  assert.equal((await ask(roomy, "--title", "T", "--context", "c".repeat(700))).code, 0, "maxContextChars from the config");
+  assert.match((await ask(roomy, "--title", "T", "--context", "c".repeat(701))).err, /The context is 701 characters; the limit is 700\./);
 });
 
 test("acknowledgements are refused; a reply to an --fyi message does not wake", async () => {

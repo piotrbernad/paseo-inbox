@@ -22,6 +22,7 @@ import { type Connect, createDirectory, type Directory, paseoConnect, withTimeou
 import { runHook } from "../hook.ts";
 import { hookCommand, stableShim, updateHookFile } from "../install-hooks.ts";
 import { readLegacyQuestions } from "../legacy.ts";
+import { questionRefusal } from "../question-rules.ts";
 import { formatWhen, withdraw } from "../questions.ts";
 import { newMessageId, type Recipient, send, tags } from "../send.ts";
 import { createStore, type Store } from "../store.ts";
@@ -50,8 +51,10 @@ const HELP = `paseo-inbox: messages and questions between Paseo agents and their
       on a host with the hook; its hook mentions the message at its next turn.
   paseo-inbox ask [--from ROLE] --to PERSON --title "..." (--context "..." | --context-file path)
                   [--option "A: text"]... [--recommend A] [--ref X]
-      Ask a person a question. The answer comes back as a message from them. The title is at
-      most 100 characters, the context at most maxBodyChars, each option at most 120.
+      Ask a person one decision. The answer comes back as a message from them. The title says
+      the decision (not the ref or a ticket id) in at most 100 characters, the context at most
+      600 (config maxContextChars), each option at most 120. No local file paths: link with
+      https://, or put the fact into the question.
   paseo-inbox list [--all] [--for PARTY]
       Open questions; --all adds everything from the last 7 days.
       PARTY is person:ID, role:ROLE, agent:AGENT_ID, or a bare person id or role. A role includes
@@ -170,7 +173,7 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
       throw new UsageError("Pass exactly one of --context or --context-file.");
     }
     const context = (values.context ?? (await readFile(values["context-file"] as string, "utf8"))).trim();
-    fits("The context", context, ctx.config.maxBodyChars);
+    fits("The context", context, ctx.config.maxContextChars);
     const options = (values.option ?? []).map((raw) => {
       const at = raw.indexOf(":");
       const key = at === -1 ? "" : raw.slice(0, at).trim();
@@ -184,6 +187,8 @@ const COMMANDS: Record<string, (args: string[], ctx: Ctx) => Promise<number>> = 
     if (values.recommend !== undefined && !keys.includes(values.recommend)) {
       throw new UsageError(`--recommend ${values.recommend} is not an option key (${keys.join(", ") || "no options"}).`);
     }
+    const refusal = questionRefusal({ title, context, options, ref: values.ref ?? null });
+    if (refusal !== null) throw new Error(refusal);
 
     const from = await sender(values.from, ctx, { allowPerson: false });
     const now = ctx.now();

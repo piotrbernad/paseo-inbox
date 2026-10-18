@@ -16,6 +16,9 @@ export const ConfigSchema = z
     roleLabel: z.string().min(1).default("team-role"),
     // Messages are short and concrete; details go in a PR, ticket or file, and the message links it.
     maxBodyChars: z.number().int().positive().default(200),
+    // A question's context says what it is about, what happened and why a decision is needed now,
+    // so it gets more room than a message.
+    maxContextChars: z.number().int().positive().default(600),
     // A message that starts with one of these words, asks nothing and links nothing is an
     // acknowledgement: it wakes the recipient for nothing, so send refuses it.
     ackWords: z.array(z.string().min(1)).default(["thanks", "thank you", "got it", "ok", "okay", "noted", "acknowledged", "understood", "sounds good"]),

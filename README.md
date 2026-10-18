@@ -53,7 +53,8 @@ Each host reads `~/.paseo/inbox.json`. Set `PASEO_INBOX_CONFIG` to use another p
 | `people` | The people agents can ask. A person belongs to the host they use Paseo on; that host's plugin notifies them. |
 | `roleLabel` | The Paseo agent label that names an agent's role. Defaults to `team-role`. |
 | `hookHosts` | Hosts whose agents have the hook installed (see [Delivery and hooks](#delivery-and-hooks)). Defaults to none: every message goes into the recipient's chat. |
-| `maxBodyChars` | The longest message, and the longest question context, in characters. Defaults to 200. |
+| `maxBodyChars` | The longest message, in characters. Defaults to 200. |
+| `maxContextChars` | The longest question context, in characters. Defaults to 600. |
 | `wakeText` | The chat message that wakes an idle agent on a hook host. Defaults to `New messages in your inbox. Read them with the shell command: paseo-inbox read`. |
 | `noticeText` | The line the hook adds to an agent's context when new messages wait. `{count}` is the number of new messages, `{from}` their senders. Defaults to `Inbox: {count} unread (from {from}). Read them with the shell command: paseo-inbox read`. |
 | `store` | The git repository, branch and local checkout of the inbox. `branch` defaults to `inbox`, `dir` to `~/.paseo/inbox-store`. |
@@ -91,7 +92,15 @@ paseo-inbox sync
 
 Inside a Paseo agent, `PASEO_AGENT_ID` identifies the sender. `--from` names its role; without it, the CLI reads the role label of the agent. `TO` is a role, `role:ROLE`, or `agent:AGENT_ID` for a session without a role. The CLI finds the recipient on this host first, then on the other hosts.
 
-Messages are short and concrete: at most 200 characters (`maxBodyChars`). `send` refuses a longer one; put the details in a PR, ticket or file and send the link. A question's title is at most 100 characters, its context at most `maxBodyChars`, and each option at most 120.
+Messages are short and concrete: at most 200 characters (`maxBodyChars`). `send` refuses a longer one; put the details in a PR, ticket or file and send the link. A question's title is at most 100 characters, its context at most 600 (`maxContextChars`), and each option at most 120.
+
+A person answers a question from the Inbox screen, often on a phone, so `ask` refuses a question they could not decide without opening anything:
+
+- **A local path** in the title, context or an option: an absolute path (`/tmp/x`, `/a/b`), one under home (`~/…`), `./…` or `../…`, `file://`, or a word with a slash that ends in a file extension (`dir/BRIEF.md`) or starts with a dot directory or `agents/`, `docs/`, `scripts/`, `src/`, `node_modules/`. Link it with `https://` (for example on GitHub), or put the fact into the question. `https://` links, fractions (`1/3`), pairs (`A/B`, `km/h`), dates and package names pass.
+- **A title that starts with the ref** (`--ref`) or a ticket id (`ABC-123`). The ref has its own field; the title says what is being decided.
+- **Several decisions in one question**: the title counts things ("5 recommendations", a whole number of at least 2 followed by a word) and an option takes them all ("all", "wszystkie"). Ask one question per decision.
+
+The checks are deliberately narrow: they refuse what is clearly wrong and let anything doubtful through.
 
 Agents are shown everywhere by their Paseo session title, else their role, else their id. The titles of sender and recipient are stored with the message; `list`, `read`, `show` and the Inbox screen show the current title when the agent's host answers.
 
